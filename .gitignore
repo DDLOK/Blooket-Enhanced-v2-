@@ -1,0 +1,6 @@
+node_modules/
+data/
+.netlify/
+*.tmp
+.DS_Store
+.env

@@ -1,0 +1,20 @@
+{
+  "name": "blooket-enhanced-v2",
+  "version": "2.0.0",
+  "private": true,
+  "description": "A free, open-source Blooket-style quiz and blook collecting game for schools.",
+  "type": "module",
+  "license": "GPL-3.0-or-later",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "dev": "node dev-server.mjs",
+    "test": "node tests/smoke.mjs"
+  },
+  "dependencies": {
+    "@netlify/database": "latest",
+    "@netlify/server": "latest",
+    "pg": "^8.13.0"
+  }
+}
