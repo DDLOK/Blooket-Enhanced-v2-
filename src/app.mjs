@@ -74,7 +74,7 @@ function meView(u) {
     ...publicUser(u), avatarRef: u.avatar, tokens: u.tokens, favorites: u.favorites || [],
     canClaimDaily: u.lastDaily !== today(), muted: !!u.muted,
     quests: ensureQuests(u), questBonus: QUEST_BONUS,
-    accountType: u.accountType || null, teacherRequest: u.teacherRequest || null, prefs: u.prefs || {},
+    prefs: u.prefs || {},
   };
 }
 
@@ -200,7 +200,6 @@ route('POST', '/api/auth/register', async ({ req, body, ip }) => {
     if (s.signupCode && body.code !== s.signupCode) fail(403, 'Wrong school code');
   }
   if (store.find('users', u => u.usernameLower === username.toLowerCase())) fail(409, 'That username is taken');
-  const accountType = body.accountType === 'teacher' ? 'teacher' : 'student';
   const id = newId(9);
   const u = {
     id, username, usernameLower: username.toLowerCase(), pass: await hashPassword(password),
@@ -208,7 +207,6 @@ route('POST', '/api/auth/register', async ({ req, body, ip }) => {
     blooks: Object.fromEntries(STARTERS.map(b => [b.id, 1])), avatar: 'blip', banner: 'grape', title: 'Newbie',
     customs: [], favorites: [], stats: { packsOpened: 0, gamesPlayed: 0, wins: 0, correct: 0, answered: 0 },
     created: Date.now(), lastDaily: null, banned: false, muted: false,
-    accountType, teacherRequest: !first && accountType === 'teacher' ? { status: 'pending', school: cleanText(body.school, 80), at: Date.now() } : null,
   };
   store.put('users', id, u);
   return json({ user: meView(u) }, 201, { 'set-cookie': startSession(req, u) });
@@ -320,19 +318,6 @@ route('DELETE', '/api/me/customs/:id', ({ user, params }) => {
   need(user);
   user.customs = (user.customs || []).filter(x => x.id !== params.id);
   if (user.avatar === `custom:${params.id}`) user.avatar = 'blip';
-  store.save('users', user.id);
-  return json({ user: meView(user) });
-});
-
-route('POST', '/api/me/account-type', ({ user, body }) => {
-  need(user);
-  const type = body.type === 'teacher' ? 'teacher' : 'student';
-  if (user.accountType && type === user.accountType && !(type === 'teacher' && user.teacherRequest?.status === 'rejected')) return json({ user: meView(user) });
-  user.accountType = type;
-  if (type === 'teacher' && user.role === 'student') {
-    if (user.teacherRequest?.status === 'pending') fail(409, 'Your teacher request is already waiting for an admin');
-    user.teacherRequest = { status: 'pending', school: cleanText(body.school, 80), at: Date.now() };
-  }
   store.save('users', user.id);
   return json({ user: meView(user) });
 });
@@ -815,7 +800,7 @@ route('POST', '/api/news', ({ user, body }) => {
 route('DELETE', '/api/news/:id', ({ user, params }) => { needStaff(user); store.del('news', params.id); return json({ ok: true }); });
 
 // Admin
-const adminUser = u => ({ id: u.id, username: u.username, role: u.role, accountType: u.accountType || '?', request: u.teacherRequest?.status || null, tokens: u.tokens, level: levelFromXp(u.xp), banned: !!u.banned, muted: !!u.muted, created: u.created, unique: Object.keys(u.blooks || {}).length });
+const adminUser = u => ({ id: u.id, username: u.username, role: u.role, tokens: u.tokens, level: levelFromXp(u.xp), banned: !!u.banned, muted: !!u.muted, created: u.created, unique: Object.keys(u.blooks || {}).length });
 route('GET', '/api/admin/users', ({ user, url }) => {
   needStaff(user);
   const q = (url.searchParams.get('q') || '').toLowerCase();
@@ -850,23 +835,6 @@ route('POST', '/api/admin/users/:id', async ({ user, body, params }) => {
   }
   store.save('users', u.id);
   return json({ user: adminUser(u), tempPassword });
-});
-route('GET', '/api/admin/teacher-requests', ({ user }) => {
-  needAdmin(user);
-  const list = store.filter('users', u => u.teacherRequest?.status === 'pending').sort((a, b) => a.teacherRequest.at - b.teacherRequest.at)
-    .map(u => ({ id: u.id, username: u.username, school: u.teacherRequest.school, at: u.teacherRequest.at, created: u.created }));
-  return json({ requests: list });
-});
-route('POST', '/api/admin/teacher-requests/:id', ({ user, body, params }) => {
-  needAdmin(user);
-  const u = store.get('users', params.id) || fail(404, 'User not found');
-  if (u.teacherRequest?.status !== 'pending') fail(409, 'No pending request');
-  const approve = !!body.approve;
-  u.teacherRequest = { ...u.teacherRequest, status: approve ? 'approved' : 'rejected', decidedAt: Date.now(), decidedBy: user.username };
-  if (approve && u.role === 'student') u.role = 'teacher';
-  if (!approve) u.accountType = 'student';
-  store.save('users', u.id);
-  return json({ ok: true });
 });
 route('GET', '/api/admin/settings', ({ user }) => { needAdmin(user); return json({ settings: settings(), storage: storeInfo }); });
 route('POST', '/api/admin/settings', ({ user, body }) => {

@@ -119,14 +119,6 @@ function appearance(me) {
       <label class="check"><input type="checkbox" id="sound" ${sfxState.muted ? '' : 'checked'}> Game sounds</label></div>`;
 }
 
-function accountBox(me) {
-  const tr = me.teacherRequest;
-  return html`<div style="background:rgba(255,255,255,.12);border-radius:10px;padding:12px;max-width:480px">
-    <b>Account type:</b> ${me.role === 'student' ? (me.accountType === 'teacher' ? 'Teacher (waiting for approval)' : 'Student') : me.role.charAt(0).toUpperCase() + me.role.slice(1)}
-    ${me.role === 'student' && tr?.status !== 'pending' ? html`<div style="margin-top:8px"><button class="btn small yellow" id="reqTeacher">I'm a teacher — request teacher access</button></div>` : ''}
-    ${tr?.status === 'rejected' ? html`<div style="font-size:13px;margin-top:6px">Your last request was not approved.</div>` : ''}</div>`;
-}
-
 export function settingsPage(el) {
   let tab = 'appearance';
   const draw = () => {
@@ -136,7 +128,7 @@ export function settingsPage(el) {
         <div class="row" style="margin-bottom:14px"><button class="btn ${tab === 'appearance' ? 'yellow' : ''}" data-tab="appearance">Appearance</button><button class="btn ${tab === 'banners' ? 'yellow' : ''}" data-tab="banners">Banners</button><button class="btn ${tab === 'titles' ? 'yellow' : ''}" data-tab="titles">Titles</button><button class="btn ${tab === 'account' ? 'yellow' : ''}" data-tab="account">Account</button></div>
         ${tab === 'appearance' ? appearance(me) : tab === 'banners' ? html`<div class="choice-grid">${BANNERS.map(b => html`<div class="choice ${me.banner === b.id ? 'on' : ''}" data-banner="${b.id}"><div class="banner-strip" style="background:${raw(b.css)}"></div><div style="margin-top:6px">${b.name}</div></div>`)}</div>`
         : tab === 'titles' ? html`<div class="choice-grid">${TITLES.map(t => html`<div class="choice ${me.title === t ? 'on' : ''}" data-title="${t}"><div class="title-chip">${t}</div></div>`)}</div>`
-        : html`${accountBox(me)}<form id="pw" style="max-width:380px"><h3 style="margin:14px 0 8px">Change password</h3><label class="field"><span>Current password</span><input class="input" type="password" name="old" required autocomplete="current-password"></label>
+        : html`<form id="pw" style="max-width:380px"><h3 style="margin:0 0 8px">Change password</h3><label class="field"><span>Current password</span><input class="input" type="password" name="old" required autocomplete="current-password"></label>
             <label class="field"><span>New password</span><input class="input" type="password" name="new" required minlength="6" autocomplete="new-password"></label><button class="btn yellow">Change Password</button></form>`}
       </div>
       <div class="stack">
@@ -160,10 +152,6 @@ export function settingsPage(el) {
     if (t.dataset?.toggle) { await post('/api/me/prefs', { [t.dataset.toggle]: t.checked }); draw(); }
     if (t.id === 'sound') { if (sfxState.muted === t.checked) toggleMute(); }
   });
-  on(el, '#reqTeacher', 'click', async () => {
-    const school = prompt('Which school or class do you teach? (helps the admin approve you)') || '';
-    try { await post('/api/me/account-type', { type: 'teacher', school }); toast('Request sent to the admins!', 'good'); draw(); } catch (err) { toast(err.message, 'bad'); }
-  });
   draw();
 }
 
@@ -172,7 +160,6 @@ export async function admin(el) {
   const isAdmin = state.me.role === 'admin';
   const s = isAdmin ? (await get('/api/admin/settings')) : null;
   render(el, html`<div class="stack">
-    ${isAdmin ? html`<div class="panel"><div class="panel-head"><h2>Teacher Requests</h2></div><div id="treq"><div class="spinner"></div></div></div>` : ''}
     ${isAdmin ? html`<form class="panel" id="sf"><div class="panel-head"><h2>Site Settings</h2><span class="muted" style="font-size:13px">Storage: ${s.storage.kind}</span></div>
       ${s.storage.warning ? html`<div class="warning-bar">${s.storage.warning}</div>` : ''}
       <div class="grid cols-2">
@@ -205,28 +192,14 @@ export async function admin(el) {
   });
   const loadUsers = async (q = '') => {
     const { users, total } = await get(`/api/admin/users?q=${encodeURIComponent(q)}`);
-    render($('#users', el), html`<p style="margin-top:0">${total} users total</p><div style="overflow-x:auto"><table class="table"><thead><tr><th>User</th><th>Role</th><th>Signed up as</th><th>Tokens</th><th>Lv</th><th>Status</th><th></th></tr></thead><tbody>
-      ${users.map(u => html`<tr><td><a href="#/u/${u.username}" style="color:var(--purple)">${u.username}</a></td><td>${u.role}</td><td>${u.accountType}${u.request === 'pending' ? ' ⏳' : ''}</td><td>${fmt(u.tokens)}</td><td>${u.level}</td>
+    render($('#users', el), html`<p style="margin-top:0">${total} users total</p><div style="overflow-x:auto"><table class="table"><thead><tr><th>User</th><th>Role</th><th>Tokens</th><th>Lv</th><th>Status</th><th></th></tr></thead><tbody>
+      ${users.map(u => html`<tr><td><a href="#/u/${u.username}" style="color:var(--purple)">${u.username}</a></td><td>${u.role}</td><td>${fmt(u.tokens)}</td><td>${u.level}</td>
         <td>${u.banned ? html`<span class="badge admin">BANNED</span>` : ''}${u.muted ? html`<span class="badge mod">MUTED</span>` : ''}</td>
         <td><button class="btn small" data-user="${u.id}">Manage</button></td></tr>`)}</tbody></table></div>`);
     userCache = users; lastQ = q;
   };
   let userCache = [], lastQ = '';
   on($('#users', el), '[data-user]', 'click', (e, b) => manage(userCache.find(u => u.id === b.dataset.user), () => loadUsers(lastQ)));
-  const loadRequests = async () => {
-    const box = $('#treq', el);
-    if (!box) return;
-    const { requests } = await get('/api/admin/teacher-requests');
-    render(box, requests.length ? html`<table class="table"><thead><tr><th>User</th><th>School / class</th><th>Requested</th><th></th></tr></thead><tbody>
-      ${requests.map(r => html`<tr><td><a href="#/u/${r.username}" style="color:var(--purple)">${r.username}</a></td><td>${r.school || '—'}</td><td>${ago(r.at)}</td>
-        <td><div class="row"><button class="btn small green" data-treq="${r.id}" data-ok="1">Approve</button><button class="btn small red" data-treq="${r.id}" data-ok="">Reject</button></div></td></tr>`)}</tbody></table>`
-      : html`<p style="margin:0">No pending teacher requests.</p>`);
-  };
-  on(el, '[data-treq]', 'click', async (e, b) => {
-    try { await post(`/api/admin/teacher-requests/${b.dataset.treq}`, { approve: !!b.dataset.ok }); toast(b.dataset.ok ? 'Approved — they are now a teacher' : 'Request rejected', 'good'); loadRequests(); loadUsers(lastQ); }
-    catch (err) { toast(err.message, 'bad'); }
-  });
-  loadRequests();
   $('#uq', el).onsubmit = e => { e.preventDefault(); loadUsers(new FormData(e.target).get('q')); };
   const manage = (u, refresh) => {
     const m = modal(`Manage ${u.username}`, html`<div class="stack">

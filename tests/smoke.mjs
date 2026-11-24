@@ -262,13 +262,6 @@ const run = async () => {
   assert.ok(r.sets.length >= 30, 'official sets seeded');
   r = await alice.api('GET', '/api/sets?scope=discover&subject=Math');
   assert.ok(r.sets.length >= 5 && r.sets.every(x => x.subject === 'Math'));
-  const teach = client();
-  r = await teach.api('POST', '/api/auth/register', { username: `teach_${suffix}`, password: 'secret123', accountType: 'teacher', school: 'Room 12' });
-  ok(r, 'teacher register'); assert.equal(r.user.role, 'student'); assert.equal(r.user.teacherRequest.status, 'pending');
-  r = await admin.api('GET', '/api/admin/teacher-requests'); const req = r.requests.find(x => x.username === `teach_${suffix}`); assert.ok(req);
-  r = await admin.api('POST', `/api/admin/teacher-requests/${req.id}`, { approve: true }); ok(r, 'approve');
-  r = await teach.api('GET', '/api/me'); assert.equal(r.user.role, 'teacher');
-  r = await alice.api('POST', '/api/me/account-type', { type: 'student' }); ok(r, 'account type');
   r = await alice.api('POST', '/api/me/prefs', { theme: 'midnight', bg: 'stars', answers: 'cb', bigText: true }); ok(r, 'prefs');
   assert.equal(r.user.prefs.theme, 'midnight');
   r = await alice.api('POST', '/api/clubs', { name: 'Quiz Wizards', tag: 'qwz', desc: 'We love quizzes', emblem: 'sprout', color: '#e63946' }); ok(r, 'create club');
@@ -281,7 +274,7 @@ const run = async () => {
   r = await bob.api('POST', `/api/clubs/${clubId}/leave`); ok(r, 'leave');
   r = await alice.api('GET', `/api/clubs/${clubId}`); assert.equal(r.club.memberCount, 1);
   cws.ws.close();
-  console.log('✓ 30+ official sets, teacher approval, appearance prefs, clubs');
+  console.log('✓ 30+ official sets, appearance prefs, clubs');
 
   // Chat
   const chat = socket('/api/ws?chat=1', bob.cookie); await chat.opened; await chat.wait('ready');

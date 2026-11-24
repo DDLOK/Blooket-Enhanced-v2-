@@ -164,7 +164,6 @@ async function route() {
     root.replaceChildren(target);
     document.title = state.settings.siteName;
   }
-  if (state.me && !state.me.accountType && match.layout === 'app') askAccountType();
   try {
     cleanup = await match.render(target, params, { go, setTitle });
   } catch (e) {
@@ -203,10 +202,6 @@ function authPage(kind) {
         <form id="authForm" style="margin-top:14px">
           <label class="field"><span>Username</span><input class="input" name="username" autocomplete="username" required maxlength="16"></label>
           <label class="field"><span>Password</span><input class="input" type="password" name="password" autocomplete="${reg ? 'new-password' : 'current-password'}" required></label>
-          ${reg ? html`<span style="font-size:14px;opacity:.85;display:block;margin-bottom:5px">I am a…</span><div class="role-pick">
-            <label class="role-card on" data-role="student"><input type="radio" name="accountType" value="student" checked hidden>${blook('sprout', 56)}<b>Student</b><span>Play games &amp; collect blooks</span></label>
-            <label class="role-card" data-role="teacher"><input type="radio" name="accountType" value="teacher" hidden>${blook('acorn-knight', 56)}<b>Teacher</b><span>Host games &amp; assign homework (needs admin approval)</span></label></div>
-            <label class="field" id="schoolField" hidden><span>School / class name (helps the admin approve you)</span><input class="input" name="school" maxlength="80"></label>` : ''}
           ${reg && s.needsCode ? html`<label class="field"><span>School code (ask your teacher)</span><input class="input" name="code" required></label>` : ''}
           ${reg && !s.signupsOpen ? html`<p class="error-text">Sign-ups are closed right now.</p>` : ''}
           <p class="error-text" id="err"></p>
@@ -214,17 +209,12 @@ function authPage(kind) {
         </form>
         <p class="center" style="margin-bottom:0">${reg ? html`Have an account? <a href="#/login" style="color:var(--purple)">Log in</a>` : html`New here? <a href="#/register" style="color:var(--purple)">Sign up free</a>`}</p>
       </div></div>`);
-    if (reg) on(el, '[data-role]', 'click', (e, c) => {
-      $$('[data-role]', el).forEach(x => x.classList.toggle('on', x === c));
-      $('input', c).checked = true;
-      $('#schoolField', el).hidden = c.dataset.role !== 'teacher';
-    });
     $('#authForm').onsubmit = async e => {
       e.preventDefault();
       const f = Object.fromEntries(new FormData(e.target));
       try {
         await post(`/api/auth/${kind}`, f);
-        toast(reg ? (f.accountType === 'teacher' ? 'Welcome! An admin will review your teacher request.' : `Welcome, ${f.username}!`) : 'Welcome back!', 'good');
+        toast(reg ? `Welcome, ${f.username}!` : 'Welcome back!', 'good');
         const next = sessionStorage.getItem('afterLogin');
         sessionStorage.removeItem('afterLogin');
         go(next || '/home');
@@ -241,9 +231,7 @@ async function home(el) {
   const cur = 40 * (lvl - 1) ** 2, nxt = 40 * lvl ** 2;
   const pct = Math.min(100, Math.round((me.xp - cur) / (nxt - cur) * 100));
   const st = me.stats || {};
-  const tr = me.teacherRequest;
-  render(el, html`${tr?.status === 'pending' ? html`<div class="notice">${blook('acorn-knight', 44)}<div><b>Your teacher request is waiting for an admin.</b><div style="font-size:14px">You can play normally in the meantime. Once approved you'll get the Teacher badge.</div></div></div>`
-    : tr?.status === 'rejected' && me.accountType !== 'teacher' ? html`<div class="notice">${blook('pebble', 44)}<div><b>Your teacher request wasn't approved.</b><div style="font-size:14px">Talk to your school's admin if you think this is a mistake.</div></div></div>` : ''}
+  render(el, html`
   <div class="grid" style="grid-template-columns:minmax(0,2fr) minmax(260px,1fr)">
     <div class="stack">
       <div class="profile-card">
@@ -335,29 +323,6 @@ function questsHtml(me) {
       ${q.claimed ? html`<span class="title-font">✓</span>` : q.progress >= q.goal ? html`<button class="btn small yellow" data-claim="${q.id}">${coin(16)} ${q.reward}</button>` : html`<span class="row" style="gap:4px;font-family:var(--title)">${coin(16)} ${q.reward}</span>`}</div>`)}
     <div class="quest ${qs.bonusClaimed ? 'done' : ''}" style="background:rgba(255,205,5,.25)"><div class="q">Finish all 3 quests</div>
       ${qs.bonusClaimed ? html`<span class="title-font">✓</span>` : all ? html`<button class="btn small yellow" data-claim="bonus">${coin(16)} ${me.questBonus}</button>` : html`<span class="row" style="gap:4px;font-family:var(--title)">${coin(16)} ${me.questBonus}</span>`}</div>`;
-}
-
-// ---- One-time "teacher or student?" prompt for accounts made before this existed ----
-let asked = false;
-async function askAccountType() {
-  if (asked) return;
-  asked = true;
-  const { modal } = await import('./ui.js');
-  const m = modal('Welcome! Are you a teacher or a student?', html`<div class="role-pick">
-      <div class="role-card" data-type="student">${blook('sprout', 64)}<b>Student</b><span>Play games &amp; collect blooks</span></div>
-      <div class="role-card" data-type="teacher">${blook('acorn-knight', 64)}<b>Teacher</b><span>Host games &amp; assign homework (an admin approves teachers)</span></div></div>
-    <label class="field" id="sch" hidden><span>School / class name</span><input class="input" id="school" maxlength="80"></label>
-    <button class="btn big block yellow" id="ok" disabled>Continue</button>`, { onClose: () => {} });
-  let type = null;
-  on(m.el, '[data-type]', 'click', (e, c) => { type = c.dataset.type; $$('[data-type]', m.el).forEach(x => x.classList.toggle('on', x === c)); $('#sch', m.el).hidden = type !== 'teacher'; $('#ok', m.el).disabled = false; });
-  $('#ok', m.el).onclick = async () => {
-    try {
-      await post('/api/me/account-type', { type, school: $('#school', m.el).value });
-      m.close();
-      toast(type === 'teacher' ? 'Request sent! An admin will review it.' : 'All set — have fun!', 'good');
-      route();
-    } catch (err) { toast(err.message, 'bad'); }
-  };
 }
 
 // ---- Boot ------------------------------------------------------------------------------------

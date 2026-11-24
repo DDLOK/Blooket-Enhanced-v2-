@@ -27,9 +27,9 @@ A free, open-source, Blooket-style quiz and blook-collecting game for schools. T
 
 **Social** – **Clubs** (create, join, club chat, club tags, club leaderboard), Bazaar (player market), leaderboards, live chat with a swear filter, news posts, profiles with **banners**, **titles** and **achievements**, daily **spin wheel** and **daily quests**
 
-**Accounts** – sign up as a **student** or **teacher**; teacher accounts are approved or rejected by an admin. **Appearance settings**: 8 themes (incl. dark), background patterns, answer-color schemes (incl. colorblind friendly), bigger text, compact layout, reduce animations
+**Appearance settings**: 8 themes (incl. dark), background patterns, answer-color schemes (incl. colorblind friendly), bigger text, compact layout, reduce animations
 
-**Admin panel** – teacher requests (approve / reject), roles (student / teacher / mod / admin), ban, mute, reset passwords, give tokens/blooks, unlock all, site name, announcement banner, school sign-up code, chat on/off, token rewards & daily caps, extra blocked words, "only teachers can host" switch. **The first account to sign up becomes the admin.**
+**Admin panel** – roles (student / teacher / mod / admin), ban, mute, reset passwords, give tokens/blooks, unlock all, site name, announcement banner, school sign-up code, chat on/off, token rewards & daily caps, extra blocked words, "only teachers can host" switch. **The first account to sign up becomes the admin.**
 
 ## Deploying on Netlify
 
