@@ -5,7 +5,7 @@ import { liveSocket } from '../api.js';
 import { html, raw, render, $, blook, toast, fmt, on, confirmBox, currencyIcon, ago } from '../ui.js';
 import { GAME_MODES } from '../data.js';
 import { podium, answerButtons, modeBg } from './play.js';
-import { sfx, sfxState, toggleMute } from '../sfx.js';
+import { sfx, sfxState, toggleMute, music, musicState } from '../sfx.js';
 
 export function hostPage(el, { code }, { go }) {
   let game = null, players = [], board = [], st = 'lobby', q = null, answered = { count: 0, total: 0 }, endsAt = null, clock = null, reveal = null, feed = [];
@@ -16,7 +16,8 @@ export function hostPage(el, { code }, { go }) {
   const top = () => html`<div class="g-top"><span class="who">${M().name}</span><span style="opacity:.85">· ${game?.title || ''}</span><span class="spacer"></span>
     ${st === 'playing' && endsAt && game.mode !== 'classic' ? html`<span class="g-pill timer" id="timer">⏱ ${timerText()}</span>` : ''}
     ${st === 'playing' && game?.settings?.winType === 'goal' ? html`<span class="g-pill" style="font-size:18px">${currencyIcon(M().icon, 22)} Goal: ${fmt(game.settings.goal)}</span>` : ''}
-    <button class="icon-btn" id="mute">${sfxState.muted ? '🔇' : '🔊'}</button>
+    <button class="icon-btn" id="musicBtn" title="Music">${musicState.on ? '🎵' : '⏸'}</button>
+    <button class="icon-btn" id="mute" title="Sound effects">${sfxState.muted ? '🔇' : '🔊'}</button>
     <button class="btn small ghost" id="fs">Fullscreen</button>
     ${st !== 'ended' ? html`<button class="btn small red" id="endBtn">${st === 'lobby' ? 'Cancel' : 'End Game'}</button>` : ''}</div>`;
 
@@ -66,6 +67,7 @@ export function hostPage(el, { code }, { go }) {
       body = html`<div class="h-wrap"><div class="h-game"><div id="hmain">${mainHtml()}</div>
         <div class="feed"><h3>Activity</h3><div id="feed">${feed.slice().reverse().map(f => html`<div class="feed-item ${f.kind}">${f.text}</div>`)}</div></div></div></div>`;
     }
+    if (st === 'lobby') music.play('lobby'); else music.stopSoon();
     render(el, html`<div class="game-screen" style="background:${raw(modeBg(game.mode))}">${top()}${body}${game.mode === 'fishing' ? raw('<div class="water-bg"></div>') : ''}</div>`);
     clock = setInterval(() => {
       const t = $('#timer', el);
@@ -126,10 +128,11 @@ export function hostPage(el, { code }, { go }) {
     if (await confirmBox('End game?', 'Everyone will see the final results.', 'End Game', 'red')) sock.send({ t: 'end' });
   });
   on(el, '#mute', 'click', (e, b) => { b.textContent = toggleMute() ? '🔇' : '🔊'; });
+  on(el, '#musicBtn', 'click', (e, b) => { const onNow = music.toggle(st === 'lobby' ? 'lobby' : null); b.textContent = onNow ? '🎵' : '⏸'; if (st !== 'lobby') music.stop(); });
   on(el, '#fs', 'click', () => { if (document.fullscreenElement) document.exitFullscreen(); else document.documentElement.requestFullscreen?.(); });
 
   draw();
-  return () => { sock.close(); clearInterval(clock); };
+  return () => { sock.close(); clearInterval(clock); music.stopSoon(); };
 }
 
 export { ago };

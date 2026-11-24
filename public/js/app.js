@@ -5,7 +5,10 @@ import { state, get, post, onMe, ApiError } from './api.js';
 import { html, raw, render, $, $$, blook, icon, coin, toast, fmt, bannerCss, ago, toStr, on } from './ui.js';
 import { WHEEL, GAME_MODES, THEMES, ANSWER_SCHEMES } from './data.js';
 import * as clubs from './pages/clubs.js';
-import { sfx } from './sfx.js';
+import * as plaza from './pages/plaza.js';
+import { sfx, music, musicState } from './sfx.js';
+import { sceneSvg } from './scene.js';
+import { applyCursor } from './cursors.js';
 import * as sets from './pages/sets.js';
 import * as blooks from './pages/blooks.js';
 import * as social from './pages/social.js';
@@ -49,6 +52,7 @@ const ROUTES = [
   ['/settings', { layout: 'app', title: 'Settings', render: social.settingsPage, auth: true }],
   ['/admin', { layout: 'app', title: 'Admin', render: social.admin, auth: true, staff: true }],
   ['/clubs', { layout: 'app', title: 'Clubs', render: clubs.clubsPage, auth: true }],
+  ['/plaza', { layout: 'full', render: plaza.plazaPage, auth: true }],
   ['/club/:id', { layout: 'app', title: 'Club', render: clubs.clubPage, auth: true }],
 ].map(([pattern, r]) => {
   const keys = [];
@@ -63,7 +67,7 @@ const NAV = [
   ['/favorites', 'Favorites', 'star'], ['/history', 'History', 'history'], ['/homework', 'Homework', 'homework'],
   ['/play', 'Play', 'play'], 'sep',
   ['/blooks', 'Blooks', 'blooks'], ['/market', 'Market', 'market'], ['/bazaar', 'Bazaar', 'bazaar'],
-  ['/clubs', 'Clubs', 'club'], ['/leaderboard', 'Leaderboard', 'trophy'], ['/chat', 'Chat', 'chat'], ['/news', 'News', 'news'], 'sep',
+  ['/plaza', 'Plaza', 'plaza', 'NEW'], ['/clubs', 'Clubs', 'club'], ['/leaderboard', 'Leaderboard', 'trophy'], ['/chat', 'Chat', 'chat'], ['/news', 'News', 'news'], 'sep',
   ['/settings', 'Settings', 'gear'],
 ];
 
@@ -76,7 +80,7 @@ function shell(title) {
       <a href="#/home" class="logo">${s.siteName}<small>v2 · ALL FREE</small></a>
       <a href="#/create" class="btn create">${icon('plus')} Create</a>
       <nav class="nav">
-        ${NAV.map(n => n === 'sep' ? raw('<div class="sep"></div>') : html`<a href="#${n[0]}" data-path="${n[0]}">${icon(n[2])}${n[1]}</a>`)}
+        ${NAV.map(n => n === 'sep' ? raw('<div class="sep"></div>') : html`<a href="#${n[0]}" data-path="${n[0]}">${icon(n[2])}${n[1]}${n[3] ? html`<span class="new">${n[3]}</span>` : ''}</a>`)}
         ${staff ? html`<a href="#/admin" data-path="/admin">${icon('shield')}Admin</a>` : ''}
       </nav>
       <div class="foot">Free &amp; open source (GPL-3.0).<br>Not affiliated with Blooket.<br><a href="https://github.com/DDLOK/Blooket-Enhanced-v2-" target="_blank" rel="noopener">Source code</a></div>
@@ -121,6 +125,7 @@ export function applyPrefs(p = {}) {
   b.toggle('big-text', !!p.bigText);
   b.toggle('compact', !!p.compact);
   document.querySelector('meta[name=theme-color]')?.setAttribute('content', t.main);
+  applyCursor(p.cursor || 'blob');
 }
 
 onMe(me => {
@@ -172,54 +177,90 @@ async function route() {
   }
 }
 
-// ---- Landing --------------------------------------------------------------------------------
+// ---- Title screen (original Rec Room-style game room) & login pages ------------------------
+const SPOTS = [[7, 6], [17, 15], [27, 4], [73, 4], [83, 15], [93, 6], [38, 1], [62, 1]];
+const FEATURED = ['sprout', 'bumble', 'astro-pup', 'witchy-cat', 'boba-bro', 'bot-9', 'squidlet', 'captain-kelp'];
+function scene(inner, sign = 'PLAY') {
+  return html`<div class="rec-scene">${sceneSvg({ sign })}
+    <div class="rec-floor">${FEATURED.map((b, i) => html`<div class="rec-blook ${i > 5 ? 'front' : ''}" style="left:${SPOTS[i][0]}%;bottom:${SPOTS[i][1]}%;--d:${i * 0.31}s">${blook(b, i > 5 ? 120 : 96)}</div>`)}</div>
+    <button class="music-btn" id="musicBtn" title="Music">${musicState.on ? '🎵' : '🔇'}</button>
+    <div class="rec-ui">${inner}</div></div>`;
+}
+function bindScene(el) {
+  $('#musicBtn', el).onclick = e => { e.stopPropagation(); e.currentTarget.textContent = music.toggle('title') ? '🎵' : '🔇'; };
+  // Clicking a blook makes it jump.
+  on(el, '.rec-blook', 'click', (e, b) => { b.classList.remove('hop'); void b.offsetWidth; b.classList.add('hop'); sfx('click'); });
+}
+
 function landing(el, params, { go }) {
   const s = state.settings;
-  render(el, html`<div class="landing">
-    <header><span class="logo">${s.siteName}</span><span class="spacer"></span>
-      <a class="btn white small" href="#/login">Log In</a><a class="btn small" href="#/register">Sign Up</a></header>
-    <div class="hero">
-      <h1>${s.siteName}</h1>
-      <p>Host live quiz games, collect original blooks, open packs and trade with your class. Everything is free — no paywalls, ever.</p>
-      <form class="join-card" id="joinForm">
-        <input class="input" id="code" inputmode="numeric" autocomplete="off" maxlength="6" placeholder="Game ID" aria-label="Game ID">
-        <button class="btn block big" style="margin-top:10px">Join a Game</button>
-      </form>
-      <div class="parade">${['sprout', 'bumble', 'squidlet', 'zorp', 'boba-bro', 'witchy-cat', 'bot-9', 'astro-pup'].map(b => blook(b, 74))}</div>
-    </div>
-  </div>`);
-  $('#joinForm').onsubmit = e => { e.preventDefault(); const c = $('#code').value.replace(/\D/g, ''); if (c.length === 6) go(`/play/${c}`); else toast('Game IDs are 6 digits', 'bad'); };
+  const started = sessionStorage.getItem('be_started') === '1';
+  render(el, scene(html`
+    <div class="title-wrap"><h1 class="game-title">${s.siteName}</h1><div class="title-sub">v2 · ALL FREE · NO PAYWALLS</div></div>
+    <div class="start-hint" id="hint" ${started ? 'hidden' : ''}>Click anywhere to start</div>
+    <div class="menu-panel" id="menu" ${started ? '' : 'hidden'}>
+      <form class="menu-join" id="joinForm"><input class="input" id="code" inputmode="numeric" autocomplete="off" maxlength="6" placeholder="Game ID" aria-label="Game ID"><button class="btn yellow">Join</button></form>
+      <a class="menu-btn play" href="#/login">PLAY</a>
+      <a class="menu-btn signup" href="#/register">CREATE ACCOUNT</a>
+      <button class="menu-btn about" id="about" type="button">HOW TO PLAY</button>
+    </div>`));
+  bindScene(el);
+  const start = () => {
+    if (!$('#hint', el) || $('#hint', el).hidden) return;
+    sessionStorage.setItem('be_started', '1');
+    $('#hint', el).hidden = true;
+    $('#menu', el).hidden = false;
+    sfx('start');
+    music.play('title');
+  };
+  el.addEventListener('pointerdown', e => { if (!e.target.closest('#musicBtn')) start(); });
+  window.addEventListener('keydown', start, { once: true });
+  if (started) music.play('title');
+  $('#joinForm', el).onsubmit = e => { e.preventDefault(); const c = $('#code', el).value.replace(/\D/g, ''); if (c.length === 6) go(`/play/${c}`); else toast('Game IDs are 6 digits', 'bad'); };
+  $('#about', el).onclick = async () => {
+    const { modal } = await import('./ui.js');
+    modal('How to play', html`<ol style="font-size:17px;line-height:1.6;margin:0;padding-left:22px">
+      <li>Your teacher hosts a game and shows a <b>Game ID</b>.</li><li>Type it in, pick a nickname and a blook.</li>
+      <li>Answer questions at your own pace — every right answer powers up your mini-game (chests, hacking, fishing, factories, racing…).</li>
+      <li>Make an account to earn tokens, open packs, collect blooks, join clubs and hang out in the Plaza!</li></ol>`);
+  };
+  return () => music.stopSoon();
 }
 
 function authPage(kind) {
   return (el, params, { go }) => {
     const s = state.settings;
     const reg = kind === 'register';
-    render(el, html`<div class="landing">
-      <header><a href="#/" class="logo">${s.siteName}</a></header>
-      <div class="auth-card card">
-        <h2 style="color:var(--purple);font-size:32px;text-align:center">${reg ? 'Sign Up' : 'Log In'}</h2>
-        <form id="authForm" style="margin-top:14px">
+    render(el, scene(html`
+      <div class="title-wrap small"><a href="#/" class="game-title">${s.siteName}</a></div>
+      <div class="rec-card">
+        <h2 class="center" style="color:var(--purple);font-size:34px">${reg ? 'Create Account' : 'Log In'}</h2>
+        <form id="authForm" style="margin-top:12px">
           <label class="field"><span>Username</span><input class="input" name="username" autocomplete="username" required maxlength="16"></label>
           <label class="field"><span>Password</span><input class="input" type="password" name="password" autocomplete="${reg ? 'new-password' : 'current-password'}" required></label>
           ${reg && s.needsCode ? html`<label class="field"><span>School code (ask your teacher)</span><input class="input" name="code" required></label>` : ''}
           ${reg && !s.signupsOpen ? html`<p class="error-text">Sign-ups are closed right now.</p>` : ''}
           <p class="error-text" id="err"></p>
-          <button class="btn block big">${reg ? 'Create Account' : 'Log In'}</button>
+          <button class="btn block big yellow">${reg ? "Let's Go!" : 'Log In'}</button>
         </form>
-        <p class="center" style="margin-bottom:0">${reg ? html`Have an account? <a href="#/login" style="color:var(--purple)">Log in</a>` : html`New here? <a href="#/register" style="color:var(--purple)">Sign up free</a>`}</p>
-      </div></div>`);
+        <p class="center" style="margin-bottom:0">${reg ? html`Have an account? <a href="#/login" style="color:var(--purple)">Log in</a>` : html`New here? <a href="#/register" style="color:var(--purple)">Create an account</a>`}</p>
+        <p class="center" style="margin:6px 0 0"><a href="#/play" style="color:var(--purple);font-size:14px">Just joining a game? Play as a guest</a></p>
+      </div>`, reg ? 'HI!' : 'PLAY'));
+    bindScene(el);
+    if (sessionStorage.getItem('be_started') === '1') music.play('title');
     $('#authForm').onsubmit = async e => {
       e.preventDefault();
       const f = Object.fromEntries(new FormData(e.target));
       try {
         await post(`/api/auth/${kind}`, f);
+        sfx('levelup');
         toast(reg ? `Welcome, ${f.username}!` : 'Welcome back!', 'good');
         const next = sessionStorage.getItem('afterLogin');
         sessionStorage.removeItem('afterLogin');
         go(next || '/home');
-      } catch (err) { $('#err').textContent = err.message; }
+      } catch (err) { $('#err').textContent = err.message; sfx('wrong'); }
     };
+    return () => music.stopSoon();
   };
 }
 
@@ -257,6 +298,7 @@ async function home(el) {
           <a class="btn big purple" style="background:var(--purple-d)" href="#/market">${icon('market')} Open Packs</a>
         </div>
       </div>
+      <a class="plaza-card" href="#/plaza">${blook('astro-pup', 64, 'dance')}<div style="flex:1"><div class="title-font" style="font-size:26px">Hang out in the Plaza</div><div style="font-size:14px">Walk around with your blook, chat and emote with everyone online.</div></div><span class="btn yellow">Go!</span></a>
       <div class="panel">
         <div class="panel-head"><h2>Game Modes</h2><span style="font-size:13px;opacity:.85">Host any set in any mode</span></div>
         <div class="grid" style="grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:10px">
@@ -331,7 +373,7 @@ async function boot() {
     const [s, m] = await Promise.all([get('/api/settings'), get('/api/me')]);
     state.settings = s;
     state.me = m.user;
-    applyPrefs(m.user?.prefs);
+    applyPrefs(m.user?.prefs || {});
   } catch (e) {
     render(root, html`<div class="empty" style="padding-top:20vh">${blook('pebble', 100)}<h2 style="color:#fff">Can't reach the server</h2><p>${e.message}</p><button class="btn" onclick="location.reload()">Try again</button></div>`);
     return;

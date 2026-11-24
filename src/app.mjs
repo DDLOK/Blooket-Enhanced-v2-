@@ -331,6 +331,7 @@ route('POST', '/api/me/prefs', ({ user, body }) => {
   if (body.reduceMotion !== undefined) p.reduceMotion = !!body.reduceMotion;
   if (body.bigText !== undefined) p.bigText = !!body.bigText;
   if (body.compact !== undefined) p.compact = !!body.compact;
+  if (body.cursor !== undefined) p.cursor = ['blob', 'star', 'sword', 'paw', 'pixel', 'rainbow', 'classic'].includes(body.cursor) ? body.cursor : 'blob';
   user.prefs = p;
   store.save('users', user.id);
   return json({ user: meView(user) });
@@ -460,6 +461,53 @@ route('POST', '/api/clubs/:id/chat', ({ user, body, params }) => {
   broadcastClub(c.id, { t: 'msg', msg });
   return json({ ok: true });
 });
+
+// ---- Plaza: a shared hangout room where blooks walk around, chat and emote ----------------
+const plaza = new Map(); // userId -> { id, name, avatar, club, role, x, y, conns:Set, lastSay, moves }
+const PLAZA_MAX = 80;
+const EMOTES = ['wave', 'heart', 'laugh', 'dance', 'gg', 'wow', 'cool', 'sleep'];
+const plazaView = p => ({ id: p.id, name: p.name, avatar: p.avatar, club: p.club, role: p.role, x: p.x, y: p.y });
+function plazaSend(msg, exceptId) {
+  const s = JSON.stringify(msg);
+  for (const p of plaza.values()) if (p.id !== exceptId) for (const c of p.conns) c.send(s);
+}
+function joinPlaza(conn, user) {
+  let p = plaza.get(user.id);
+  if (!p) {
+    if (plaza.size >= PLAZA_MAX) { conn.send(JSON.stringify({ t: 'error', msg: 'The Plaza is full right now — try again in a bit!', fatal: true })); return conn.close(); }
+    p = { id: user.id, name: user.username, avatar: resolveBlook(user, user.avatar), club: clubBadge(user), role: user.role,
+      x: 380 + Math.round(Math.random() * 240), y: 450 + Math.round(Math.random() * 300), conns: new Set(), lastSay: 0, win: { at: 0, n: 0 } };
+    plaza.set(user.id, p);
+    plazaSend({ t: 'join', p: plazaView(p) }, p.id);
+  }
+  p.conns.add(conn);
+  conn.send(JSON.stringify({ t: 'init', you: p.id, players: [...plaza.values()].map(plazaView), chat: settings().chatEnabled }));
+  conn.onmessage = m => {
+    const now = Date.now();
+    if (now - p.win.at > 1000) p.win = { at: now, n: 0 };
+    if (++p.win.n > 15) return;
+    if (m.t === 'move') {
+      const x = Math.max(30, Math.min(970, Math.round(Number(m.x) || 0)));
+      const y = Math.max(60, Math.min(970, Math.round(Number(m.y) || 0)));
+      p.x = x; p.y = y;
+      plazaSend({ t: 'move', id: p.id, x, y }, p.id);
+    } else if (m.t === 'say') {
+      const fresh = store.get('users', p.id);
+      if (!settings().chatEnabled || !fresh || fresh.muted || now - p.lastSay < 1200) return;
+      const text = filter().clean(cleanText(m.text, 80));
+      if (!text) return;
+      p.lastSay = now;
+      plazaSend({ t: 'say', id: p.id, text });
+    } else if (m.t === 'emote' && EMOTES.includes(m.e)) {
+      plazaSend({ t: 'emote', id: p.id, e: m.e });
+    }
+  };
+  conn.onclose = () => {
+    p.conns.delete(conn);
+    if (!p.conns.size && plaza.get(p.id) === p) { plaza.delete(p.id); plazaSend({ t: 'leave', id: p.id }); }
+  };
+}
+route('GET', '/api/plaza', () => json({ online: plaza.size }));
 
 // Packs & blooks
 route('POST', '/api/packs/open', ({ user, body, ip }) => {
@@ -901,6 +949,10 @@ export async function openSocket(conn, url, cookies) {
     conn.onclose = () => chatConns.delete(conn);
     conn.send(JSON.stringify({ t: 'ready' }));
     return;
+  }
+  if (p.get('plaza')) {
+    if (!user) { conn.send(JSON.stringify({ t: 'error', msg: 'Log in to visit the Plaza', fatal: true })); return conn.close(); }
+    return joinPlaza(conn, user);
   }
   if (p.get('club')) {
     const c = store.get('clubs', p.get('club'));

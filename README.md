@@ -19,15 +19,19 @@ A free, open-source, Blooket-style quiz and blook-collecting game for schools. T
 - **History** – a report for every game you host, with CSV download
 - Guests can play without an account; signed-in players earn tokens & XP
 
+**Title screen** – an original cozy "rec room" scene with bouncing blooks, click-to-start, a game-style menu and original chiptune music (composed in code, no audio files)
+
+**Plaza** – a hangout room where everyone online walks around with their blook (click or WASD), chats in speech bubbles and uses emotes; lobby music included
+
 **31 official quizzes** on Discover (Math, Science, Geography, History, English, Spanish/French/Arabic, Technology, Arts, Health, Trivia) with subject filters
 
 **Question sets** – create/edit, subjects, 2–4 answers (multiple correct allowed), per-question timers, public/private, Discover search, Favorites, bulk import (paste from a spreadsheet or CSV)
 
-**Blooks** – 7 packs with 60 original blooks (+ 4 starters) across 8 rarities, pack-opening animation (open 1 or 10), My Blooks page with Blook Score star, rarity gems, locked silhouettes, sell duplicates, set your avatar, **custom blook maker** (12 per player)
+**Blooks** – 7 packs with 60 original blooks (+ 4 starters), drawn in a chunky style with outlines, glossy eyes and little feet across 8 rarities, pack-opening animation (open 1 or 10), My Blooks page with Blook Score star, rarity gems, locked silhouettes, sell duplicates, set your avatar, **custom blook maker** (12 per player)
 
 **Social** – **Clubs** (create, join, club chat, club tags, club leaderboard), Bazaar (player market), leaderboards, live chat with a swear filter, news posts, profiles with **banners**, **titles** and **achievements**, daily **spin wheel** and **daily quests**
 
-**Appearance settings**: 8 themes (incl. dark), background patterns, answer-color schemes (incl. colorblind friendly), bigger text, compact layout, reduce animations
+**Appearance settings**: 8 themes (incl. dark), 6 custom cursors, background patterns, answer-color schemes (incl. colorblind friendly), bigger text, compact layout, reduce animations
 
 **Admin panel** – roles (student / teacher / mod / admin), ban, mute, reset passwords, give tokens/blooks, unlock all, site name, announcement banner, school sign-up code, chat on/off, token rewards & daily caps, extra blocked words, "only teachers can host" switch. **The first account to sign up becomes the admin.**
 

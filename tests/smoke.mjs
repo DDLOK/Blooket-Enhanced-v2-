@@ -262,7 +262,7 @@ const run = async () => {
   assert.ok(r.sets.length >= 30, 'official sets seeded');
   r = await alice.api('GET', '/api/sets?scope=discover&subject=Math');
   assert.ok(r.sets.length >= 5 && r.sets.every(x => x.subject === 'Math'));
-  r = await alice.api('POST', '/api/me/prefs', { theme: 'midnight', bg: 'stars', answers: 'cb', bigText: true }); ok(r, 'prefs');
+  r = await alice.api('POST', '/api/me/prefs', { theme: 'midnight', bg: 'stars', answers: 'cb', bigText: true, cursor: 'paw' }); ok(r, 'prefs'); assert.equal(r.user.prefs.cursor, 'paw');
   assert.equal(r.user.prefs.theme, 'midnight');
   r = await alice.api('POST', '/api/clubs', { name: 'Quiz Wizards', tag: 'qwz', desc: 'We love quizzes', emblem: 'sprout', color: '#e63946' }); ok(r, 'create club');
   const clubId = r.club.id; assert.equal(r.user.club.tag, 'QWZ');
@@ -275,6 +275,20 @@ const run = async () => {
   r = await alice.api('GET', `/api/clubs/${clubId}`); assert.equal(r.club.memberCount, 1);
   cws.ws.close();
   console.log('✓ 30+ official sets, appearance prefs, clubs');
+
+  // Plaza
+  const pzA = socket('/api/ws?plaza=1', alice.cookie); await pzA.opened;
+  const initA = await pzA.wait('init');
+  const pzB = socket('/api/ws?plaza=1', bob.cookie); await pzB.opened; await pzB.wait('init');
+  await pzA.wait('join');
+  pzB.send({ t: 'move', x: 500, y: 600 });
+  const mv = await pzA.wait('move'); assert.equal(mv.x, 500);
+  await sleep(50); pzB.send({ t: 'say', text: 'hello shit plaza' });
+  const sy = await pzA.wait('say'); assert.ok(!sy.text.includes('shit'));
+  await sleep(50); pzB.send({ t: 'emote', e: 'dance' });
+  await pzA.wait('emote', m => m.e === 'dance');
+  pzB.ws.close(); await pzA.wait('leave'); pzA.ws.close();
+  console.log(`✓ plaza (${initA.players.length} → walk, chat ${JSON.stringify(sy.text)}, emote, leave)`);
 
   // Chat
   const chat = socket('/api/ws?chat=1', bob.cookie); await chat.opened; await chat.wait('ready');

@@ -5,6 +5,7 @@ import { state, get, post, del, liveSocket } from '../api.js';
 import { html, raw, render, $, $$, blook, coin, toast, modal, confirmBox, fmt, ago, bannerCss, on, toStr, clubTag } from '../ui.js';
 import { BANNERS, TITLES, BLOOKS, SCORE_POINTS, THEMES, BACKGROUNDS, ANSWER_SCHEMES } from '../data.js';
 import { achievementsFor } from '../achievements.js';
+import { CURSORS } from '../cursors.js';
 import { sfxState, toggleMute } from '../sfx.js';
 
 const roleBadge = r => (r && r !== 'student' ? html`<span class="badge ${r}">${r.toUpperCase()}</span>` : '');
@@ -112,6 +113,8 @@ function appearance(me) {
     <h3 style="margin:16px 0 8px">Background pattern</h3><div class="row">${Object.entries(BACKGROUNDS).map(([id, n]) => html`<button class="chip ${bg === id ? 'on' : ''}" data-pref="bg" data-val="${id}">${n}</button>`)}</div>
     <h3 style="margin:16px 0 8px">Answer colors (in games)</h3><div class="choice-grid">${Object.entries(ANSWER_SCHEMES).map(([id, a]) => html`<div class="choice ${ans === id ? 'on' : ''}" data-pref="answers" data-val="${id}">
       <div class="theme-swatch">${a.colors.map(c => html`<div style="background:${c}"></div>`)}</div><div style="margin-top:6px">${a.name}</div></div>`)}</div>
+    <h3 style="margin:16px 0 8px">Cursor</h3><div class="choice-grid" style="grid-template-columns:repeat(auto-fill,minmax(110px,1fr))">${Object.entries(CURSORS).map(([id, c]) => html`<div class="choice ${(p.cursor || 'blob') === id ? 'on' : ''}" data-pref="cursor" data-val="${id}">
+      <div style="height:44px;display:flex;align-items:center;justify-content:center;gap:6px">${c[1] ? raw(c[1].replace('<svg ', '<svg style="width:34px;height:34px" ')) : raw('<span style="font-size:28px">🖱️</span>')}${c[2] && c[2] !== c[1] ? raw(c[2].replace('<svg ', '<svg style="width:26px;height:26px;opacity:.85" ')) : ''}</div><div>${c[0]}</div></div>`)}</div>
     <h3 style="margin:16px 0 8px">Comfort</h3><div class="row">
       <label class="check"><input type="checkbox" data-toggle="bigText" ${p.bigText ? 'checked' : ''}> Bigger text</label>
       <label class="check"><input type="checkbox" data-toggle="compact" ${p.compact ? 'checked' : ''}> Compact layout</label>

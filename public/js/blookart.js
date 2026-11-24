@@ -34,21 +34,24 @@ function lum(h) {
 
 const INK = '#1d1d2b';
 
-function star(cx, cy, r, fill) {
+function star(cx, cy, r, fill, outline) {
   let p = '';
   for (let i = 0; i < 10; i++) {
     const rr = i % 2 ? r * 0.45 : r;
     const a = -Math.PI / 2 + (i * Math.PI) / 5;
     p += `${i ? 'L' : 'M'}${(cx + rr * Math.cos(a)).toFixed(1)} ${(cy + rr * Math.sin(a)).toFixed(1)} `;
   }
-  return `<path d="${p}Z" fill="${fill}"/>`;
+  return `<path d="${p}Z" fill="${fill}"${outline ? ` stroke="${outline}" stroke-width="2" stroke-linejoin="round"` : ''}/>`;
 }
 
-function eyes(type, A, ink) {
+function eyes(type, A, ink, line) {
   const L = 50 - A.es, R = 50 + A.es, y = A.ey;
-  const dot = (x, r = 5.5) => `<circle cx="${x}" cy="${y}" r="${r}" fill="${ink}"/><circle cx="${x + 1.8}" cy="${y - 1.8}" r="1.8" fill="${ink === INK ? '#fff' : INK}"/>`;
-  const big = x => `<circle cx="${x}" cy="${y}" r="8.5" fill="#fff"/><circle cx="${x + 0.8}" cy="${y + 1}" r="5" fill="${INK}"/><circle cx="${x + 2.4}" cy="${y - 1}" r="1.9" fill="#fff"/>`;
-  const arc = (x, up) => `<path d="M${x - 6} ${y + (up ? 2 : 0)} Q${x} ${y + (up ? -6 : 5)} ${x + 6} ${y + (up ? 2 : 0)}" stroke="${ink}" stroke-width="3.2" fill="none" stroke-linecap="round"/>`;
+  const dark = ink !== INK; // dark body: give pupils a white backing so they pop
+  const glint = (x, yy, s = 1) => `<circle cx="${x + 2.3 * s}" cy="${yy - 2.8 * s}" r="${2.5 * s}" fill="#fff"/><circle cx="${x - 1.9 * s}" cy="${yy + 2.6 * s}" r="${1.1 * s}" fill="#fff" opacity=".9"/>`;
+  const dot = x => (dark ? `<ellipse cx="${x}" cy="${y}" rx="8.6" ry="10" fill="#fff" stroke="${line}" stroke-width="2"/>` : '') +
+    `<ellipse cx="${x}" cy="${y + (dark ? 0.8 : 0)}" rx="6.4" ry="7.8" fill="${INK}"/>` + glint(x, y);
+  const big = x => `<ellipse cx="${x}" cy="${y}" rx="10" ry="11" fill="#fff" stroke="${line}" stroke-width="2.2"/><ellipse cx="${x + 1}" cy="${y + 1.5}" rx="6" ry="7" fill="${INK}"/>` + glint(x + 1, y + 1.2, 0.95);
+  const arc = (x, up) => `<path d="M${x - 6.5} ${y + (up ? 2.5 : 0)} Q${x} ${y + (up ? -6.5 : 6)} ${x + 6.5} ${y + (up ? 2.5 : 0)}" stroke="${dark ? '#fff' : INK}" stroke-width="3.8" fill="none" stroke-linecap="round"/>`;
   switch (type) {
     case 'big': return big(L) + big(R);
     case 'sleepy': return arc(L, false) + arc(R, false);
@@ -56,17 +59,21 @@ function eyes(type, A, ink) {
     case 'wink': return dot(L) + arc(R, true);
     case 'angry':
       return dot(L) + dot(R) +
-        `<path d="M${L - 7} ${y - 10} L${L + 5} ${y - 6} M${R + 7} ${y - 10} L${R - 5} ${y - 6}" stroke="${ink}" stroke-width="3" stroke-linecap="round"/>`;
+        `<path d="M${L - 8} ${y - 12} L${L + 6} ${y - 7} M${R + 8} ${y - 12} L${R - 6} ${y - 7}" stroke="${dark ? '#fff' : INK}" stroke-width="3.6" stroke-linecap="round"/>`;
     case 'cyclops':
-      return `<circle cx="50" cy="${y}" r="14" fill="#fff"/><circle cx="51" cy="${y + 1}" r="8" fill="#e63946"/><circle cx="51" cy="${y + 1}" r="4" fill="${INK}"/><circle cx="55" cy="${y - 4}" r="2.6" fill="#fff"/>`;
+      return `<circle cx="50" cy="${y}" r="15" fill="#fff" stroke="${line}" stroke-width="2.4"/><circle cx="51" cy="${y + 1}" r="8.5" fill="#e63946"/><circle cx="51" cy="${y + 1}" r="4.4" fill="${INK}"/>` + glint(51, y, 1.2);
     case 'three':
-      return [50 - 14, 50, 50 + 14].map((x, i) => `<circle cx="${x}" cy="${y - (i === 1 ? 4 : 0)}" r="4.6" fill="${ink}"/>`).join('');
-    case 'star': return star(L, y, 7.5, ink) + star(R, y, 7.5, ink);
+      return [50 - 14, 50, 50 + 14].map((x, i) => {
+        const yy = y - (i === 1 ? 4 : 0);
+        return (dark ? `<circle cx="${x}" cy="${yy}" r="7" fill="#fff" stroke="${line}" stroke-width="1.8"/>` : '') + `<circle cx="${x}" cy="${yy}" r="5.2" fill="${INK}"/><circle cx="${x + 1.8}" cy="${yy - 2}" r="1.8" fill="#fff"/>`;
+      }).join('');
+    case 'star': return star(L, y, 9, '#ffd60a', INK) + star(R, y, 9, '#ffd60a', INK);
     case 'visor':
-      return `<rect x="${L - 10}" y="${y - 7}" width="${R - L + 20}" height="14" rx="7" fill="${INK}"/>` +
-        `<circle cx="${L}" cy="${y}" r="3.5" fill="#00f5d4"/><circle cx="${R}" cy="${y}" r="3.5" fill="#00f5d4"/>`;
+      return `<rect x="${L - 11}" y="${y - 8}" width="${R - L + 22}" height="16" rx="8" fill="${INK}" stroke="${line}" stroke-width="2"/>` +
+        `<ellipse cx="${L}" cy="${y}" rx="4.5" ry="4" fill="#00f5d4"/><ellipse cx="${R}" cy="${y}" rx="4.5" ry="4" fill="#00f5d4"/><rect x="${L - 7}" y="${y - 5}" width="9" height="2.4" rx="1.2" fill="#fff" opacity=".5"/>`;
     case 'hollow':
-      return `<ellipse cx="${L}" cy="${y}" rx="6" ry="8" fill="${ink}"/><ellipse cx="${R}" cy="${y}" rx="6" ry="8" fill="${ink}"/>`;
+      return `<ellipse cx="${L}" cy="${y}" rx="7" ry="9.5" fill="${dark ? '#fff' : INK}"/><ellipse cx="${R}" cy="${y}" rx="7" ry="9.5" fill="${dark ? '#fff' : INK}"/>` +
+        (dark ? '' : `<circle cx="${L + 2}" cy="${y - 3}" r="2" fill="#fff" opacity=".8"/><circle cx="${R + 2}" cy="${y - 3}" r="2" fill="#fff" opacity=".8"/>`);
     default: return dot(L) + dot(R);
   }
 }
@@ -74,13 +81,13 @@ function eyes(type, A, ink) {
 function mouth(type, A, ink) {
   const y = A.my;
   switch (type) {
-    case 'smile': return `<path d="M44 ${y} Q50 ${y + 6} 56 ${y}" stroke="${ink}" stroke-width="3" fill="none" stroke-linecap="round"/>`;
-    case 'open': return `<path d="M43 ${y - 1} Q50 ${y + 12} 57 ${y - 1} Z" fill="#5b1a2a"/><ellipse cx="50" cy="${y + 4.5}" rx="3.6" ry="2" fill="#ff6b81"/>`;
-    case 'cat': return `<path d="M42 ${y} Q46 ${y + 4.5} 50 ${y} Q54 ${y + 4.5} 58 ${y}" stroke="${ink}" stroke-width="2.8" fill="none" stroke-linecap="round"/>`;
-    case 'fang': return `<path d="M43 ${y} Q50 ${y + 6} 57 ${y}" stroke="${ink}" stroke-width="3" fill="none" stroke-linecap="round"/><path d="M45 ${y + 2} L46.5 ${y + 6} L48 ${y + 2.6} Z M55 ${y + 2} L53.5 ${y + 6} L52 ${y + 2.6} Z" fill="#fff"/>`;
-    case 'o': return `<ellipse cx="50" cy="${y + 1}" rx="3.6" ry="4.2" fill="#5b1a2a"/>`;
-    case 'flat': return `<path d="M45 ${y + 1} H55" stroke="${ink}" stroke-width="3" stroke-linecap="round"/>`;
-    case 'grin': return `<path d="M40 ${y - 2} Q50 ${y + 12} 60 ${y - 2} Z" fill="#5b1a2a"/><path d="M42 ${y - 1.6} H58 L57 ${y + 1.8} H43 Z" fill="#fff"/>`;
+    case 'smile': return `<path d="M43.5 ${y} Q50 ${y + 7} 56.5 ${y}" stroke="${ink}" stroke-width="3.6" fill="none" stroke-linecap="round"/>`;
+    case 'open': return `<path d="M42.5 ${y - 1.5} Q50 ${y + 13} 57.5 ${y - 1.5} Z" fill="#5b1a2a" stroke="${INK}" stroke-width="2.4" stroke-linejoin="round"/><ellipse cx="50" cy="${y + 5.5}" rx="4" ry="2.4" fill="#ff6b81"/>`;
+    case 'cat': return `<path d="M42 ${y} Q46 ${y + 5} 50 ${y} Q54 ${y + 5} 58 ${y}" stroke="${ink}" stroke-width="3.4" fill="none" stroke-linecap="round"/>`;
+    case 'fang': return `<path d="M43 ${y} Q50 ${y + 6} 57 ${y}" stroke="${ink}" stroke-width="3.6" fill="none" stroke-linecap="round"/><path d="M45 ${y + 2} L46.5 ${y + 6.5} L48 ${y + 2.6} Z M55 ${y + 2} L53.5 ${y + 6.5} L52 ${y + 2.6} Z" fill="#fff" stroke="${INK}" stroke-width="1" stroke-linejoin="round"/>`;
+    case 'o': return `<ellipse cx="50" cy="${y + 1}" rx="4" ry="4.8" fill="#5b1a2a" stroke="${INK}" stroke-width="2"/>`;
+    case 'flat': return `<path d="M44.5 ${y + 1} H55.5" stroke="${ink}" stroke-width="3.6" stroke-linecap="round"/>`;
+    case 'grin': return `<path d="M40 ${y - 2} Q50 ${y + 13} 60 ${y - 2} Z" fill="#5b1a2a" stroke="${INK}" stroke-width="2.4" stroke-linejoin="round"/><path d="M42 ${y - 1.4} H58 L57 ${y + 2} H43 Z" fill="#fff"/><ellipse cx="50" cy="${y + 6}" rx="4" ry="2" fill="#ff6b81"/>`;
     default: return '';
   }
 }
@@ -188,18 +195,32 @@ export function blookSVG(idOrBlook, size = 96, extraClass = '') {
   const a = blook.art;
   const A = SHAPES[a.s] || SHAPES.round;
   const c = a.c, d = shade(c, -0.22);
+  const line = shade(c, -0.62);             // thick outline in a deep shade of the body color
   const ink = lum(c) < 0.32 ? '#ffffff' : INK;
   const id = `bk${++uid}`;
   const xs = a.x || [];
   const back = xs.filter(x => BACK[x]).map(x => BACK[x](A, c, d)).join('');
   const clip = xs.filter(x => CLIP[x]).map(x => CLIP[x](A, c, d)).join('');
-  const front = xs.filter(x => FRONT[x]).map(x => FRONT[x](A, c, d)).join('');
-  const cheeks = a.k ? `<ellipse cx="${50 - A.es - 8}" cy="${A.ey + 9}" rx="5" ry="3" fill="#ff5d8f" opacity=".45"/><ellipse cx="${50 + A.es + 8}" cy="${A.ey + 9}" rx="5" ry="3" fill="#ff5d8f" opacity=".45"/>` : '';
+  const NO_LINE = ['sparkles', 'spaceHelmet', 'bubble', 'halo', 'glasses', 'chains', 'spout', 'shades', 'headband'];
+  const front = xs.filter(x => FRONT[x] && !NO_LINE.includes(x)).map(x => FRONT[x](A, c, d)).join('');
+  const frontPlain = xs.filter(x => FRONT[x] && NO_LINE.includes(x)).map(x => FRONT[x](A, c, d)).join('');
+  const cheeks = a.k ? `<ellipse cx="${50 - A.es - 8.5}" cy="${A.ey + 10}" rx="5.5" ry="3.2" fill="#ff5d8f" opacity=".55"/><ellipse cx="${50 + A.es + 8.5}" cy="${A.ey + 10}" rx="5.5" ry="3.2" fill="#ff5d8f" opacity=".55"/>` : '';
+  const hasFeet = a.s !== 'ghost' && !xs.includes('tentacles');
+  const fx = a.s === 'wide' ? 20 : a.s === 'tall' ? 12 : 14;
+  const feet = hasFeet ? [50 - fx, 50 + fx].map(x => `<ellipse cx="${x}" cy="${A.bottom - 1}" rx="${a.s === 'wide' ? 11 : 9.5}" ry="6" fill="${d}" stroke="${line}" stroke-width="3"/>`).join('') : '';
+  const outlined = inner => (inner ? `<g stroke="${line}" stroke-width="2.6" stroke-linejoin="round">${inner}</g>` : '');
   return `<svg class="blook-svg ${extraClass}" viewBox="-6 -10 112 112" width="${size}" height="${size}" role="img" aria-label="${blook.name}">` +
     `<defs><clipPath id="${id}"><path d="${A.d}"/></clipPath></defs>` +
-    back +
+    `<ellipse cx="50" cy="${A.bottom + 5}" rx="30" ry="4.5" fill="#000" opacity=".16"/>` +
+    outlined(back) + feet +
     `<path d="${A.d}" fill="${c}"/>` +
-    `<g clip-path="url(#${id})">${clip}<ellipse cx="50" cy="${A.bottom + 4}" rx="62" ry="18" fill="#000" opacity=".14"/><ellipse cx="34" cy="${A.top + 12}" rx="10" ry="5" fill="#fff" opacity=".35" transform="rotate(-25 34 ${A.top + 12})"/></g>` +
-    eyes(a.e, A, ink) + mouth(a.m, A, ink) + cheeks + front +
+    `<g clip-path="url(#${id})">${clip}` +
+      `<ellipse cx="50" cy="${A.bottom + 6}" rx="66" ry="20" fill="#000" opacity=".16"/>` +
+      `<path d="${A.d}" fill="none" stroke="#fff" stroke-opacity=".28" stroke-width="5" transform="translate(-1.5 -2)"/>` +
+      `<ellipse cx="35" cy="${A.top + 13}" rx="11" ry="5.5" fill="#fff" opacity=".45" transform="rotate(-25 35 ${A.top + 13})"/>` +
+      `<circle cx="48" cy="${A.top + 8}" r="2.2" fill="#fff" opacity=".45"/>` +
+    `</g>` +
+    `<path d="${A.d}" fill="none" stroke="${line}" stroke-width="3.6" stroke-linejoin="round"/>` +
+    cheeks + eyes(a.e, A, ink, line) + mouth(a.m, A, ink) + outlined(front) + frontPlain +
     `</svg>`;
 }

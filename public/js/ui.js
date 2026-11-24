@@ -100,6 +100,7 @@ const ICONS = {
   lock: '<rect x="5" y="10" width="14" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3" fill="none" stroke="currentColor" stroke-width="2.6"/>',
   menu: '<rect x="3" y="5" width="18" height="2.6" rx="1.3"/><rect x="3" y="11" width="18" height="2.6" rx="1.3"/><rect x="3" y="17" width="18" height="2.6" rx="1.3"/>',
   user: '<circle cx="12" cy="8" r="4.5"/><path d="M3 21a9 9 0 0 1 18 0z"/>',
+  plaza: '<rect x="2" y="10" width="20" height="8" rx="3"/><rect x="5" y="6" width="14" height="6" rx="2.5"/><rect x="4" y="18" width="2.5" height="3" rx="1"/><rect x="17.5" y="18" width="2.5" height="3" rx="1"/>',
   club: '<circle cx="8" cy="8" r="3.5"/><circle cx="16.5" cy="8" r="3.5"/><path d="M1.5 20a6.5 6.5 0 0 1 13 0zM10.5 20a6 6 0 0 1 12 0z"/>',
 };
 export const icon = (name, cls = 'icon') => raw(`<svg class="${cls}" viewBox="0 0 24 24" aria-hidden="true">${ICONS[name] || ''}</svg>`);
