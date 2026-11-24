@@ -100,6 +100,7 @@ const ICONS = {
   lock: '<rect x="5" y="10" width="14" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3" fill="none" stroke="currentColor" stroke-width="2.6"/>',
   menu: '<rect x="3" y="5" width="18" height="2.6" rx="1.3"/><rect x="3" y="11" width="18" height="2.6" rx="1.3"/><rect x="3" y="17" width="18" height="2.6" rx="1.3"/>',
   user: '<circle cx="12" cy="8" r="4.5"/><path d="M3 21a9 9 0 0 1 18 0z"/>',
+  club: '<circle cx="8" cy="8" r="3.5"/><circle cx="16.5" cy="8" r="3.5"/><path d="M1.5 20a6.5 6.5 0 0 1 13 0zM10.5 20a6 6 0 0 1 12 0z"/>',
 };
 export const icon = (name, cls = 'icon') => raw(`<svg class="${cls}" viewBox="0 0 24 24" aria-hidden="true">${ICONS[name] || ''}</svg>`);
 export const lockSvg = () => raw(`<svg class="lock" viewBox="0 0 24 24">${ICONS.lock}</svg>`);
@@ -134,3 +135,20 @@ export const scoreStar = () => raw(`<svg viewBox="0 0 240 200" aria-hidden="true
 
 // A treasure chest for Gold Rush.
 export const chestSvg = (color = '#b5651d') => raw(`<svg viewBox="0 0 170 150" width="170" height="150"><rect x="15" y="58" width="140" height="82" rx="10" fill="${color}"/><path d="M15 70a70 52 0 0 1 140 0z" fill="${color}"/><path d="M15 70a70 52 0 0 1 140 0" fill="none" stroke="#00000030" stroke-width="5"/><rect x="15" y="66" width="140" height="12" fill="#ffcd05"/><rect x="75" y="62" width="20" height="30" rx="4" fill="#ffcd05" stroke="#d9a900" stroke-width="3"/><rect x="15" y="128" width="140" height="12" rx="6" fill="#00000030"/><rect x="28" y="20" width="12" height="120" fill="#00000018"/><rect x="130" y="20" width="12" height="120" fill="#00000018"/></svg>`);
+
+// ---- Game currency icons ----
+export const fishSvg = (color = '#4cc9f0', size = 40) => raw(`<svg viewBox="0 0 64 40" width="${size * 1.6}" height="${size}" aria-hidden="true"><path d="M50 20 L63 6 L63 34 Z" fill="${color}"/><ellipse cx="28" cy="20" rx="26" ry="16" fill="${color}"/><ellipse cx="28" cy="26" rx="20" ry="7" fill="#fff" opacity=".25"/><path d="M24 6 Q30 0 38 5" stroke="${color}" stroke-width="5" fill="none"/><circle cx="12" cy="16" r="4" fill="#fff"/><circle cx="11" cy="16" r="2.2" fill="#1d1d2b"/><path d="M34 12 Q38 20 34 28" stroke="#00000030" stroke-width="2.5" fill="none"/></svg>`);
+const cryptoSvg = s => `<svg viewBox="0 0 32 32" width="${s}" height="${s}" aria-hidden="true"><path d="M16 1.5l13 7.5v14l-13 7.5-13-7.5V9z" fill="#14b37d" stroke="#0b6b4a" stroke-width="2"/><path d="M20.5 11.5a6 6 0 1 0 0 9" stroke="#eafff5" stroke-width="3.2" fill="none" stroke-linecap="round"/><path d="M15 7v3M15 22v3" stroke="#eafff5" stroke-width="2.4" stroke-linecap="round"/></svg>`;
+const cashSvg = s => `<svg viewBox="0 0 40 28" width="${s * 1.35}" height="${s}" aria-hidden="true"><rect x="1" y="3" width="38" height="22" rx="4" fill="#2d9d3a" stroke="#1b6b25" stroke-width="2"/><circle cx="20" cy="14" r="6" fill="#c7f5c4"/><path d="M20 10v8M17.5 12.2q2.5-2 5 0M17.5 15.8q2.5 2 5 0" stroke="#1b6b25" stroke-width="1.6" fill="none"/><circle cx="7" cy="14" r="2" fill="#c7f5c4"/><circle cx="33" cy="14" r="2" fill="#c7f5c4"/></svg>`;
+const flagSvg = s => `<svg viewBox="0 0 32 32" width="${s}" height="${s}" aria-hidden="true"><rect x="5" y="3" width="3" height="27" rx="1.5" fill="#fff"/><path d="M8 4h18l-4 6 4 6H8z" fill="#1d1d2b"/><path d="M8 4h4.5v4H8zM17 4h4.5v4H17zM12.5 8H17v4h-4.5zM21.5 8H24l-1.3 4h-1.2zM8 12h4.5v4H8zM17 12h4.5v4H17z" fill="#fff"/></svg>`;
+const starSvg = s => `<svg viewBox="0 0 24 24" width="${s}" height="${s}" aria-hidden="true"><path d="M12 2.5l2.9 6 6.6.8-4.9 4.6 1.3 6.6L12 17.3l-5.9 3.2 1.3-6.6L2.5 9.3l6.6-.8z" fill="#ffcd05" stroke="#d9a900" stroke-width="1.5"/></svg>`;
+export function currencyIcon(kind, size = 26) {
+  if (kind === 'gold') return coin(size);
+  if (kind === 'crypto') return raw(cryptoSvg(size));
+  if (kind === 'fish') return fishSvg('#4cc9f0', size * 0.8);
+  if (kind === 'cash') return raw(cashSvg(size * 0.8));
+  if (kind === 'flag') return raw(flagSvg(size));
+  return raw(starSvg(size));
+}
+
+export const clubTag = (tag, color = '#9a49aa') => (tag ? html`<span class="club-tag" style="background:${color}">${tag}</span>` : '');

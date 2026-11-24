@@ -2,8 +2,10 @@
 // Copyright (C) 2026 Blooket Enhanced v2 contributors. GPL-3.0-or-later.
 
 import { state, get, post, del, liveSocket } from '../api.js';
-import { html, raw, render, $, $$, blook, coin, toast, modal, confirmBox, fmt, ago, bannerCss, on, toStr } from '../ui.js';
-import { BANNERS, TITLES, BLOOKS, SCORE_POINTS } from '../data.js';
+import { html, raw, render, $, $$, blook, coin, toast, modal, confirmBox, fmt, ago, bannerCss, on, toStr, clubTag } from '../ui.js';
+import { BANNERS, TITLES, BLOOKS, SCORE_POINTS, THEMES, BACKGROUNDS, ANSWER_SCHEMES } from '../data.js';
+import { achievementsFor } from '../achievements.js';
+import { sfxState, toggleMute } from '../sfx.js';
 
 const roleBadge = r => (r && r !== 'student' ? html`<span class="badge ${r}">${r.toUpperCase()}</span>` : '');
 
@@ -11,11 +13,14 @@ const roleBadge = r => (r && r !== 'student' ? html`<span class="badge ${r}">${r
 export async function leaderboard(el) {
   const data = await get('/api/leaderboard');
   let tab = 'tokens';
-  const LABEL = { tokens: 'Tokens', xp: 'Level', blooks: 'Unique Blooks', wins: 'Wins' };
+  const LABEL = { tokens: 'Tokens', xp: 'Level', blooks: 'Unique Blooks', wins: 'Wins', clubs: 'Clubs' };
   const val = (r, t) => (t === 'tokens' ? fmt(r.tokens) : t === 'xp' ? `Lv ${r.level}` : t === 'blooks' ? r.unique : r.wins);
   const draw = () => render(el, html`<div class="tabs">${Object.entries(LABEL).map(([k, v]) => html`<button data-tab="${k}" class="${tab === k ? 'on' : ''}">${v}</button>`)}</div>
-    <div class="leader" style="width:100%;max-width:820px">${data[tab].map((r, i) => html`<a class="lrow ${r.username === state.me.username ? 'me' : ''}" href="#/u/${r.username}">
-      <span class="rank">${i + 1}</span>${blook(r.avatar, 46)}<span class="nm">${r.username} <span class="muted" style="font-size:13px">${r.title}</span></span>
+    <div class="leader" style="width:100%;max-width:820px">${tab === 'clubs'
+      ? (data.clubs.length ? data.clubs.map((c, i) => html`<a class="lrow ${state.me.club?.id === c.id ? 'me' : ''}" href="#/club/${c.id}"><span class="rank">${i + 1}</span><span style="background:${c.color};border-radius:10px;padding:2px">${blook(c.emblem, 42)}</span>
+          <span class="nm">${clubTag(c.tag, c.color)}${c.name} <span class="muted" style="font-size:13px">${c.memberCount} members</span></span><span class="sc">${fmt(c.xp)} XP</span></a>`) : html`<div class="empty">No clubs yet.</div>`)
+      : data[tab].map((r, i) => html`<a class="lrow ${r.username === state.me.username ? 'me' : ''}" href="#/u/${r.username}">
+      <span class="rank">${i + 1}</span>${blook(r.avatar, 46)}<span class="nm">${r.club ? clubTag(r.club) : ''}${r.username} <span class="muted" style="font-size:13px">${r.title}</span></span>
       <span class="sc">${tab === 'tokens' ? coin(20) : ''} ${val(r, tab)}</span></a>`)}</div>`);
   on(el, '[data-tab]', 'click', (e, b) => { tab = b.dataset.tab; draw(); });
   draw();
@@ -26,7 +31,7 @@ export async function chat(el) {
   const { messages, enabled } = await get('/api/chat');
   const staff = ['admin', 'mod'].includes(state.me.role);
   const msgHtml = m => html`<div class="chat-msg" data-id="${m.id}">${blook(m.avatar, 40)}<div style="flex:1;min-width:0">
-      <div><a class="who" href="#/u/${m.username}">${m.username}</a> ${roleBadge(m.role)}<span class="when">${ago(m.ts)}</span>
+      <div>${m.club ? clubTag(m.club) : ''}<a class="who" href="#/u/${m.username}">${m.username}</a> ${roleBadge(m.role)}<span class="when">${ago(m.ts)}</span>
       ${staff ? html`<button class="btn small red" data-del="${m.id}" style="padding:0 8px 3px;font-size:12px;margin-left:6px">x</button>` : ''}</div>
       <div class="text">${m.text}</div></div></div>`;
   render(el, html`<div class="panel chat-box">
@@ -86,27 +91,52 @@ export async function profile(el, { name }, { setTitle }) {
   const best = owned.sort((a, b) => (SCORE_POINTS[BLOOKS[b].rarity] || 0) - (SCORE_POINTS[BLOOKS[a].rarity] || 0)).slice(0, 12);
   render(el, html`<div class="profile-card" style="max-width:900px">
     <div class="banner" style="background:${raw(bannerCss(u.banner))}"><div class="avatar">${blook(u.avatar, 96)}</div>
-      <div class="who"><h2>${u.username} ${roleBadge(u.role)}</h2><div class="ttl">${u.title}</div></div></div>
+      <div class="who"><h2>${u.club ? clubTag(u.club.tag, u.club.color) : ''}${u.username} ${roleBadge(u.role)}</h2><div class="ttl">${u.title}${u.club ? html` · <a href="#/club/${u.club.id}" style="text-decoration:underline">${u.club.name}</a>` : ''}</div></div></div>
     <div class="info">
       <div class="stat"><b>${u.level}</b><span>Level</span></div><div class="stat"><b>${fmt(score)}</b><span>Blook Score</span></div>
       <div class="stat"><b>${owned.length}</b><span>Unique Blooks</span></div><div class="stat"><b>${fmt(u.stats.gamesPlayed || 0)}</b><span>Games</span></div>
       <div class="stat"><b>${fmt(u.stats.wins || 0)}</b><span>Wins</span></div><div class="stat"><b>${new Date(u.created).toLocaleDateString()}</b><span>Joined</span></div>
     </div></div>
     <div class="panel" style="max-width:900px;margin-top:16px"><div class="panel-head"><h2>Showcase</h2></div>
-      <div class="blook-tiles">${best.map(id => html`<div class="tile" title="${BLOOKS[id].name}">${blook(id, 54)}</div>`)}${u.customs.map(c => html`<div class="tile" title="${c.name}">${blook(c, 54)}</div>`)}</div></div>`);
+      <div class="blook-tiles">${best.map(id => html`<div class="tile" title="${BLOOKS[id].name}">${blook(id, 54)}</div>`)}${u.customs.map(c => html`<div class="tile" title="${c.name}">${blook(c, 54)}</div>`)}</div></div>
+    <div class="panel" style="max-width:900px;margin-top:16px"><div class="panel-head"><h2>Achievements</h2><span>${achievementsFor(u).filter(a => a.unlocked).length} / ${achievementsFor(u).length}</span></div>
+      <div class="ach-grid">${achievementsFor(u).map(a => html`<div class="ach ${a.unlocked ? '' : 'locked'}" title="${a.desc}"><div class="em">${a.em}</div><b>${a.name}</b><span>${a.desc}</span></div>`)}</div></div>`);
 }
 
 // ---- Settings: banners, titles, avatar, password ---------------------------------------------------
+function appearance(me) {
+  const p = me.prefs || {};
+  const theme = p.theme || 'grape', bg = p.bg || 'shapes', ans = p.answers || 'classic';
+  return html`<h3 style="margin:0 0 8px">Theme</h3><div class="choice-grid">${Object.entries(THEMES).map(([id, t]) => html`<div class="choice ${theme === id ? 'on' : ''}" data-pref="theme" data-val="${id}">
+      <div class="theme-swatch"><div style="background:${t.main}"></div><div style="background:${t.bg1}"></div><div style="background:${t.bg2}"></div></div><div style="margin-top:6px">${t.name}</div></div>`)}</div>
+    <h3 style="margin:16px 0 8px">Background pattern</h3><div class="row">${Object.entries(BACKGROUNDS).map(([id, n]) => html`<button class="chip ${bg === id ? 'on' : ''}" data-pref="bg" data-val="${id}">${n}</button>`)}</div>
+    <h3 style="margin:16px 0 8px">Answer colors (in games)</h3><div class="choice-grid">${Object.entries(ANSWER_SCHEMES).map(([id, a]) => html`<div class="choice ${ans === id ? 'on' : ''}" data-pref="answers" data-val="${id}">
+      <div class="theme-swatch">${a.colors.map(c => html`<div style="background:${c}"></div>`)}</div><div style="margin-top:6px">${a.name}</div></div>`)}</div>
+    <h3 style="margin:16px 0 8px">Comfort</h3><div class="row">
+      <label class="check"><input type="checkbox" data-toggle="bigText" ${p.bigText ? 'checked' : ''}> Bigger text</label>
+      <label class="check"><input type="checkbox" data-toggle="compact" ${p.compact ? 'checked' : ''}> Compact layout</label>
+      <label class="check"><input type="checkbox" data-toggle="reduceMotion" ${p.reduceMotion ? 'checked' : ''}> Reduce animations</label>
+      <label class="check"><input type="checkbox" id="sound" ${sfxState.muted ? '' : 'checked'}> Game sounds</label></div>`;
+}
+
+function accountBox(me) {
+  const tr = me.teacherRequest;
+  return html`<div style="background:rgba(255,255,255,.12);border-radius:10px;padding:12px;max-width:480px">
+    <b>Account type:</b> ${me.role === 'student' ? (me.accountType === 'teacher' ? 'Teacher (waiting for approval)' : 'Student') : me.role.charAt(0).toUpperCase() + me.role.slice(1)}
+    ${me.role === 'student' && tr?.status !== 'pending' ? html`<div style="margin-top:8px"><button class="btn small yellow" id="reqTeacher">I'm a teacher — request teacher access</button></div>` : ''}
+    ${tr?.status === 'rejected' ? html`<div style="font-size:13px;margin-top:6px">Your last request was not approved.</div>` : ''}</div>`;
+}
+
 export function settingsPage(el) {
-  let tab = 'banners';
+  let tab = 'appearance';
   const draw = () => {
     const me = state.me;
     render(el, html`<div class="grid" style="grid-template-columns:minmax(0,1fr) 340px">
       <div class="panel">
-        <div class="row" style="margin-bottom:14px"><button class="btn ${tab === 'banners' ? 'yellow' : ''}" data-tab="banners">Banners</button><button class="btn ${tab === 'titles' ? 'yellow' : ''}" data-tab="titles">Titles</button><button class="btn ${tab === 'password' ? 'yellow' : ''}" data-tab="password">Password</button></div>
-        ${tab === 'banners' ? html`<div class="choice-grid">${BANNERS.map(b => html`<div class="choice ${me.banner === b.id ? 'on' : ''}" data-banner="${b.id}"><div class="banner-strip" style="background:${raw(b.css)}"></div><div style="margin-top:6px">${b.name}</div></div>`)}</div>`
+        <div class="row" style="margin-bottom:14px"><button class="btn ${tab === 'appearance' ? 'yellow' : ''}" data-tab="appearance">Appearance</button><button class="btn ${tab === 'banners' ? 'yellow' : ''}" data-tab="banners">Banners</button><button class="btn ${tab === 'titles' ? 'yellow' : ''}" data-tab="titles">Titles</button><button class="btn ${tab === 'account' ? 'yellow' : ''}" data-tab="account">Account</button></div>
+        ${tab === 'appearance' ? appearance(me) : tab === 'banners' ? html`<div class="choice-grid">${BANNERS.map(b => html`<div class="choice ${me.banner === b.id ? 'on' : ''}" data-banner="${b.id}"><div class="banner-strip" style="background:${raw(b.css)}"></div><div style="margin-top:6px">${b.name}</div></div>`)}</div>`
         : tab === 'titles' ? html`<div class="choice-grid">${TITLES.map(t => html`<div class="choice ${me.title === t ? 'on' : ''}" data-title="${t}"><div class="title-chip">${t}</div></div>`)}</div>`
-        : html`<form id="pw" style="max-width:380px"><label class="field"><span>Current password</span><input class="input" type="password" name="old" required autocomplete="current-password"></label>
+        : html`${accountBox(me)}<form id="pw" style="max-width:380px"><h3 style="margin:14px 0 8px">Change password</h3><label class="field"><span>Current password</span><input class="input" type="password" name="old" required autocomplete="current-password"></label>
             <label class="field"><span>New password</span><input class="input" type="password" name="new" required minlength="6" autocomplete="new-password"></label><button class="btn yellow">Change Password</button></form>`}
       </div>
       <div class="stack">
@@ -124,6 +154,16 @@ export function settingsPage(el) {
   on(el, '[data-tab]', 'click', (e, b) => { tab = b.dataset.tab; draw(); });
   on(el, '[data-banner]', 'click', async (e, b) => { await post('/api/me/profile', { banner: b.dataset.banner }); draw(); });
   on(el, '[data-title]', 'click', async (e, b) => { await post('/api/me/profile', { title: b.dataset.title }); draw(); });
+  on(el, '[data-pref]', 'click', async (e, b) => { await post('/api/me/prefs', { [b.dataset.pref]: b.dataset.val }); draw(); });
+  el.addEventListener('change', async e => {
+    const t = e.target;
+    if (t.dataset?.toggle) { await post('/api/me/prefs', { [t.dataset.toggle]: t.checked }); draw(); }
+    if (t.id === 'sound') { if (sfxState.muted === t.checked) toggleMute(); }
+  });
+  on(el, '#reqTeacher', 'click', async () => {
+    const school = prompt('Which school or class do you teach? (helps the admin approve you)') || '';
+    try { await post('/api/me/account-type', { type: 'teacher', school }); toast('Request sent to the admins!', 'good'); draw(); } catch (err) { toast(err.message, 'bad'); }
+  });
   draw();
 }
 
@@ -132,6 +172,7 @@ export async function admin(el) {
   const isAdmin = state.me.role === 'admin';
   const s = isAdmin ? (await get('/api/admin/settings')) : null;
   render(el, html`<div class="stack">
+    ${isAdmin ? html`<div class="panel"><div class="panel-head"><h2>Teacher Requests</h2></div><div id="treq"><div class="spinner"></div></div></div>` : ''}
     ${isAdmin ? html`<form class="panel" id="sf"><div class="panel-head"><h2>Site Settings</h2><span class="muted" style="font-size:13px">Storage: ${s.storage.kind}</span></div>
       ${s.storage.warning ? html`<div class="warning-bar">${s.storage.warning}</div>` : ''}
       <div class="grid cols-2">
@@ -164,14 +205,28 @@ export async function admin(el) {
   });
   const loadUsers = async (q = '') => {
     const { users, total } = await get(`/api/admin/users?q=${encodeURIComponent(q)}`);
-    render($('#users', el), html`<p style="margin-top:0">${total} users total</p><div style="overflow-x:auto"><table class="table"><thead><tr><th>User</th><th>Role</th><th>Tokens</th><th>Lv</th><th>Status</th><th></th></tr></thead><tbody>
-      ${users.map(u => html`<tr><td><a href="#/u/${u.username}" style="color:var(--purple)">${u.username}</a></td><td>${u.role}</td><td>${fmt(u.tokens)}</td><td>${u.level}</td>
+    render($('#users', el), html`<p style="margin-top:0">${total} users total</p><div style="overflow-x:auto"><table class="table"><thead><tr><th>User</th><th>Role</th><th>Signed up as</th><th>Tokens</th><th>Lv</th><th>Status</th><th></th></tr></thead><tbody>
+      ${users.map(u => html`<tr><td><a href="#/u/${u.username}" style="color:var(--purple)">${u.username}</a></td><td>${u.role}</td><td>${u.accountType}${u.request === 'pending' ? ' ⏳' : ''}</td><td>${fmt(u.tokens)}</td><td>${u.level}</td>
         <td>${u.banned ? html`<span class="badge admin">BANNED</span>` : ''}${u.muted ? html`<span class="badge mod">MUTED</span>` : ''}</td>
         <td><button class="btn small" data-user="${u.id}">Manage</button></td></tr>`)}</tbody></table></div>`);
     userCache = users; lastQ = q;
   };
   let userCache = [], lastQ = '';
   on($('#users', el), '[data-user]', 'click', (e, b) => manage(userCache.find(u => u.id === b.dataset.user), () => loadUsers(lastQ)));
+  const loadRequests = async () => {
+    const box = $('#treq', el);
+    if (!box) return;
+    const { requests } = await get('/api/admin/teacher-requests');
+    render(box, requests.length ? html`<table class="table"><thead><tr><th>User</th><th>School / class</th><th>Requested</th><th></th></tr></thead><tbody>
+      ${requests.map(r => html`<tr><td><a href="#/u/${r.username}" style="color:var(--purple)">${r.username}</a></td><td>${r.school || '—'}</td><td>${ago(r.at)}</td>
+        <td><div class="row"><button class="btn small green" data-treq="${r.id}" data-ok="1">Approve</button><button class="btn small red" data-treq="${r.id}" data-ok="">Reject</button></div></td></tr>`)}</tbody></table>`
+      : html`<p style="margin:0">No pending teacher requests.</p>`);
+  };
+  on(el, '[data-treq]', 'click', async (e, b) => {
+    try { await post(`/api/admin/teacher-requests/${b.dataset.treq}`, { approve: !!b.dataset.ok }); toast(b.dataset.ok ? 'Approved — they are now a teacher' : 'Request rejected', 'good'); loadRequests(); loadUsers(lastQ); }
+    catch (err) { toast(err.message, 'bad'); }
+  });
+  loadRequests();
   $('#uq', el).onsubmit = e => { e.preventDefault(); loadUsers(new FormData(e.target).get('q')); };
   const manage = (u, refresh) => {
     const m = modal(`Manage ${u.username}`, html`<div class="stack">

@@ -6,22 +6,30 @@ A free, open-source, Blooket-style quiz and blook-collecting game for schools. T
 
 ## Features
 
-**Games**
-- **Live hosting** with a 6-digit Game ID, lobby, kick button, fullscreen host screen, late joining
-- **Classic** – everyone answers together, faster correct answers score more, host controls the pace
+**Games** (Blooket-style: everyone answers at their own pace, the fun happens between questions)
+- **Live hosting** with a 6-digit Game ID, blook lobby, kick button, fullscreen host screen with live leaderboard + activity feed, late joining, win by **time** or by **goal**
 - **Gold Rush** – answer to open chests: gold, double/triple, swipe gold from a classmate, swap, jackpot…
+- **Crypto Heist** – pick a secret password, mine crypto, hack other players by guessing theirs
+- **Fish Fest** – every correct answer casts your line; bigger fish as your lure levels up
+- **Blook Factory** – hire blook workers that earn cash every second, upgrade them when your factory is full
 - **Blook Race** – each correct answer moves your blook along the track; first to the finish wins
+- **Showdown** – optional host-paced mode where everyone answers the same question together
+- Sound effects (synthesized, no audio files) with a mute button
 - **Solo practice** and **Homework** (shareable link, server-graded, teacher sees every student's best score)
 - **History** – a report for every game you host, with CSV download
 - Guests can play without an account; signed-in players earn tokens & XP
 
-**Question sets** – create/edit, 2–4 answers (multiple correct allowed), per-question timers, public/private, Discover search, Favorites, bulk import (paste from a spreadsheet or CSV)
+**31 official quizzes** on Discover (Math, Science, Geography, History, English, Spanish/French/Arabic, Technology, Arts, Health, Trivia) with subject filters
+
+**Question sets** – create/edit, subjects, 2–4 answers (multiple correct allowed), per-question timers, public/private, Discover search, Favorites, bulk import (paste from a spreadsheet or CSV)
 
 **Blooks** – 7 packs with 60 original blooks (+ 4 starters) across 8 rarities, pack-opening animation (open 1 or 10), My Blooks page with Blook Score star, rarity gems, locked silhouettes, sell duplicates, set your avatar, **custom blook maker** (12 per player)
 
-**Social** – Bazaar (player market), leaderboards (tokens / level / blooks / wins), live chat with a swear filter, news posts, profiles with **banners** and **titles**, daily token reward
+**Social** – **Clubs** (create, join, club chat, club tags, club leaderboard), Bazaar (player market), leaderboards, live chat with a swear filter, news posts, profiles with **banners**, **titles** and **achievements**, daily **spin wheel** and **daily quests**
 
-**Admin panel** – roles (student / teacher / mod / admin), ban, mute, reset passwords, give tokens/blooks, unlock all, site name, announcement banner, school sign-up code, chat on/off, token rewards & daily caps, extra blocked words, "only teachers can host" switch. **The first account to sign up becomes the admin.**
+**Accounts** – sign up as a **student** or **teacher**; teacher accounts are approved or rejected by an admin. **Appearance settings**: 8 themes (incl. dark), background patterns, answer-color schemes (incl. colorblind friendly), bigger text, compact layout, reduce animations
+
+**Admin panel** – teacher requests (approve / reject), roles (student / teacher / mod / admin), ban, mute, reset passwords, give tokens/blooks, unlock all, site name, announcement banner, school sign-up code, chat on/off, token rewards & daily caps, extra blocked words, "only teachers can host" switch. **The first account to sign up becomes the admin.**
 
 ## Deploying on Netlify
 

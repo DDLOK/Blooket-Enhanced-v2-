@@ -12,7 +12,9 @@ import {
   cleanText, makeFilter, rateLimit, today, levelFromXp,
 } from './util.mjs';
 import { games, createGame, gameInfo, joinGame, attachHost, attachPlayer } from './games.mjs';
-import { BLOOKS, PACKS, PACK_BY_ID, STARTERS, RARITIES, GAME_MODES, BANNERS, TITLES } from '../public/js/data.js';
+import { BLOOKS, PACKS, PACK_BY_ID, STARTERS, RARITIES, GAME_MODES, BANNERS, TITLES, WHEEL, THEMES, BACKGROUNDS, ANSWER_SCHEMES, SUBJECTS } from '../public/js/data.js';
+import { seedOfficialSets, OFFICIAL_ID } from './seed.mjs';
+import { ensureQuests, questProgress, QUEST_BONUS } from './quests.mjs';
 import { ART_OPTIONS } from '../public/js/blookart.js';
 
 const COOKIE = 'be_sid';
@@ -55,9 +57,13 @@ function resolveBlook(u, ref) {
   return BLOOKS[ref] ? ref : 'blip';
 }
 
+function clubBadge(u) {
+  const c = u.clubId && store.get('clubs', u.clubId);
+  return c ? { id: c.id, name: c.name, tag: c.tag, color: c.color } : null;
+}
 function publicUser(u) {
   return {
-    id: u.id, username: u.username, role: u.role, avatar: resolveBlook(u, u.avatar),
+    id: u.id, username: u.username, role: u.role, avatar: resolveBlook(u, u.avatar), club: clubBadge(u),
     banner: u.banner || 'grape', title: u.title || 'Newbie',
     level: levelFromXp(u.xp), xp: u.xp || 0, created: u.created, stats: u.stats || {},
     blooks: u.blooks || {}, customs: (u.customs || []).map(c => ({ id: c.id, name: c.name, art: c.art })),
@@ -67,6 +73,8 @@ function meView(u) {
   return {
     ...publicUser(u), avatarRef: u.avatar, tokens: u.tokens, favorites: u.favorites || [],
     canClaimDaily: u.lastDaily !== today(), muted: !!u.muted,
+    quests: ensureQuests(u), questBonus: QUEST_BONUS,
+    accountType: u.accountType || null, teacherRequest: u.teacherRequest || null, prefs: u.prefs || {},
   };
 }
 
@@ -113,7 +121,8 @@ function validateSet(body) {
   });
   const f = filter();
   if (f.isBad(title) || f.isBad(description)) fail(400, 'Please keep titles and descriptions school-friendly');
-  return { title, description, questions, public: body.public !== false, color: /^#[0-9a-f]{6}$/i.test(body.color) ? body.color : '#0bc2cf' };
+  const subject = SUBJECTS.includes(body.subject) ? body.subject : 'Other';
+  return { title, description, questions, subject, public: body.public !== false, color: /^#[0-9a-f]{6}$/i.test(body.color) ? body.color : '#0bc2cf' };
 }
 
 function validateArt(a) {
@@ -128,7 +137,8 @@ function validateArt(a) {
 
 const setSummary = (s, u) => ({
   id: s.id, title: s.title, description: s.description, color: s.color, questionCount: s.questions.length,
-  ownerName: store.get('users', s.ownerId)?.username || 'unknown', ownerId: s.ownerId, public: s.public,
+  ownerName: s.ownerId === OFFICIAL_ID ? 'Blooket Enhanced' : store.get('users', s.ownerId)?.username || 'unknown', ownerId: s.ownerId, public: s.public,
+  official: s.ownerId === OFFICIAL_ID, subject: s.subject || 'Other',
   plays: s.plays || 0, created: s.created, updated: s.updated, favorite: !!u?.favorites?.includes(s.id),
 });
 
@@ -190,6 +200,7 @@ route('POST', '/api/auth/register', async ({ req, body, ip }) => {
     if (s.signupCode && body.code !== s.signupCode) fail(403, 'Wrong school code');
   }
   if (store.find('users', u => u.usernameLower === username.toLowerCase())) fail(409, 'That username is taken');
+  const accountType = body.accountType === 'teacher' ? 'teacher' : 'student';
   const id = newId(9);
   const u = {
     id, username, usernameLower: username.toLowerCase(), pass: await hashPassword(password),
@@ -197,6 +208,7 @@ route('POST', '/api/auth/register', async ({ req, body, ip }) => {
     blooks: Object.fromEntries(STARTERS.map(b => [b.id, 1])), avatar: 'blip', banner: 'grape', title: 'Newbie',
     customs: [], favorites: [], stats: { packsOpened: 0, gamesPlayed: 0, wins: 0, correct: 0, answered: 0 },
     created: Date.now(), lastDaily: null, banned: false, muted: false,
+    accountType, teacherRequest: !first && accountType === 'teacher' ? { status: 'pending', school: cleanText(body.school, 80), at: Date.now() } : null,
   };
   store.put('users', id, u);
   return json({ user: meView(u) }, 201, { 'set-cookie': startSession(req, u) });
@@ -244,12 +256,36 @@ route('POST', '/api/me/password', async ({ user, body }) => {
 
 route('POST', '/api/me/daily', ({ user }) => {
   need(user);
-  if (user.lastDaily === today()) fail(409, 'Already claimed today — come back tomorrow!');
-  const amt = Number(settings().dailyReward) || 500;
+  if (user.lastDaily === today()) fail(409, 'Already spun today — come back tomorrow!');
+  const base = Number(settings().dailyReward) || 500;
+  const total = WHEEL.reduce((s, x) => s + x.w, 0);
+  let r = Math.random() * total, slice = 0;
+  for (let i = 0; i < WHEEL.length; i++) { if ((r -= WHEEL[i].w) < 0) { slice = i; break; } }
+  const amt = Math.round(base * WHEEL[slice].m);
   user.lastDaily = today();
   user.tokens += amt;
   store.save('users', user.id);
-  return json({ amount: amt, user: meView(user) });
+  return json({ amount: amt, slice, user: meView(user) });
+});
+
+route('POST', '/api/me/quests/:id/claim', ({ user, params }) => {
+  need(user);
+  const qs = ensureQuests(user);
+  if (params.id === 'bonus') {
+    if (qs.bonusClaimed) fail(409, 'Already claimed');
+    if (!qs.list.every(q => q.claimed)) fail(400, 'Finish all 3 quests first');
+    qs.bonusClaimed = true;
+    user.tokens += QUEST_BONUS;
+    store.save('users', user.id);
+    return json({ amount: QUEST_BONUS, user: meView(user) });
+  }
+  const q = qs.list.find(x => x.id === params.id) || fail(404, 'Quest not found');
+  if (q.claimed) fail(409, 'Already claimed');
+  if (q.progress < q.goal) fail(400, 'Not finished yet');
+  q.claimed = true;
+  user.tokens += q.reward;
+  store.save('users', user.id);
+  return json({ amount: q.reward, user: meView(user) });
 });
 
 route('POST', '/api/me/customs', ({ user, body }) => {
@@ -261,6 +297,7 @@ route('POST', '/api/me/customs', ({ user, body }) => {
   if (filter().isBad(name)) fail(400, 'Pick a different name');
   const c = { id: newId(6), name, art: validateArt(body.art), created: Date.now() };
   user.customs.push(c);
+  questProgress(user, 'custom', 1);
   store.save('users', user.id);
   return json({ custom: c, user: meView(user) }, 201);
 });
@@ -274,6 +311,7 @@ route('PUT', '/api/me/customs/:id', ({ user, body, params }) => {
     c.name = name;
   }
   if (body.art) c.art = validateArt(body.art);
+  questProgress(user, 'custom', 1);
   store.save('users', user.id);
   return json({ user: meView(user) });
 });
@@ -284,6 +322,158 @@ route('DELETE', '/api/me/customs/:id', ({ user, params }) => {
   if (user.avatar === `custom:${params.id}`) user.avatar = 'blip';
   store.save('users', user.id);
   return json({ user: meView(user) });
+});
+
+route('POST', '/api/me/account-type', ({ user, body }) => {
+  need(user);
+  const type = body.type === 'teacher' ? 'teacher' : 'student';
+  if (user.accountType && type === user.accountType && !(type === 'teacher' && user.teacherRequest?.status === 'rejected')) return json({ user: meView(user) });
+  user.accountType = type;
+  if (type === 'teacher' && user.role === 'student') {
+    if (user.teacherRequest?.status === 'pending') fail(409, 'Your teacher request is already waiting for an admin');
+    user.teacherRequest = { status: 'pending', school: cleanText(body.school, 80), at: Date.now() };
+  }
+  store.save('users', user.id);
+  return json({ user: meView(user) });
+});
+
+route('POST', '/api/me/prefs', ({ user, body }) => {
+  need(user);
+  const p = { ...(user.prefs || {}) };
+  if (body.theme !== undefined) p.theme = THEMES[body.theme] ? body.theme : 'grape';
+  if (body.bg !== undefined) p.bg = BACKGROUNDS[body.bg] ? body.bg : 'shapes';
+  if (body.answers !== undefined) p.answers = ANSWER_SCHEMES[body.answers] ? body.answers : 'classic';
+  if (body.reduceMotion !== undefined) p.reduceMotion = !!body.reduceMotion;
+  if (body.bigText !== undefined) p.bigText = !!body.bigText;
+  if (body.compact !== undefined) p.compact = !!body.compact;
+  user.prefs = p;
+  store.save('users', user.id);
+  return json({ user: meView(user) });
+});
+
+// ---- Clubs ---------------------------------------------------------------------------------
+const MAX_CLUB = 50;
+function clubSummary(c) {
+  const members = c.members.map(id => store.get('users', id)).filter(Boolean);
+  return {
+    id: c.id, name: c.name, tag: c.tag, desc: c.desc, color: c.color, emblem: BLOOKS[c.emblem] ? c.emblem : 'blip', open: c.open,
+    ownerName: store.get('users', c.ownerId)?.username || '?', memberCount: members.length,
+    xp: members.reduce((s, u) => s + (u.xp || 0), 0), wins: members.reduce((s, u) => s + (u.stats?.wins || 0), 0), created: c.created,
+  };
+}
+function validateClub(body, existing) {
+  const name = cleanText(body.name, 30);
+  if (name.length < 3) fail(400, 'Club names need at least 3 characters');
+  const tag = cleanText(body.tag, 5).toUpperCase().replace(/[^A-Z0-9]/g, '');
+  if (tag.length < 2) fail(400, 'Club tags are 2-5 letters or numbers');
+  const desc = cleanText(body.desc, 300);
+  const f = filter();
+  if (f.isBad(name) || f.isBad(tag) || f.isBad(desc)) fail(400, 'Please keep it school-friendly');
+  if (store.find('clubs', c => c !== existing && (c.name.toLowerCase() === name.toLowerCase() || c.tag === tag))) fail(409, 'That club name or tag is taken');
+  return { name, tag, desc, color: /^#[0-9a-f]{6}$/i.test(body.color) ? body.color : '#9a49aa', emblem: BLOOKS[body.emblem] ? body.emblem : 'blip', open: body.open !== false };
+}
+function leaveClub(user) {
+  const c = user.clubId && store.get('clubs', user.clubId);
+  user.clubId = null;
+  if (!c) return;
+  c.members = c.members.filter(id => id !== user.id);
+  if (!c.members.length) { store.del('clubs', c.id); store.del('clubchat', c.id); return; }
+  if (c.ownerId === user.id) c.ownerId = c.members[0];
+  store.save('clubs', c.id);
+}
+const clubConns = new Map(); // clubId -> Set(conn)
+function broadcastClub(id, msg) { const s = JSON.stringify(msg); for (const c of clubConns.get(id) || []) c.send(s); }
+
+route('GET', '/api/clubs', ({ url }) => {
+  const q = (url.searchParams.get('q') || '').toLowerCase().slice(0, 40);
+  let list = store.all('clubs');
+  if (q) list = list.filter(c => c.name.toLowerCase().includes(q) || c.tag.toLowerCase().includes(q));
+  return json({ clubs: list.map(clubSummary).sort((a, b) => b.xp - a.xp).slice(0, 200) });
+});
+route('GET', '/api/clubs/:id', ({ user, params }) => {
+  const c = store.get('clubs', params.id) || fail(404, 'Club not found');
+  const members = c.members.map(id => store.get('users', id)).filter(Boolean)
+    .map(u => ({ id: u.id, username: u.username, avatar: resolveBlook(u, u.avatar), level: levelFromXp(u.xp), xp: u.xp || 0, owner: u.id === c.ownerId, title: u.title || 'Newbie' }))
+    .sort((a, b) => b.owner - a.owner || b.xp - a.xp);
+  return json({ club: { ...clubSummary(c), members, mine: !!user && c.members.includes(user.id), isOwner: !!user && c.ownerId === user.id } });
+});
+route('POST', '/api/clubs', ({ user, body }) => {
+  need(user);
+  if (user.clubId && store.get('clubs', user.clubId)) fail(400, 'Leave your current club first');
+  const id = newId(7);
+  const c = { id, ...validateClub(body), ownerId: user.id, members: [user.id], created: Date.now() };
+  store.put('clubs', id, c);
+  user.clubId = id;
+  store.save('users', user.id);
+  return json({ club: clubSummary(c), user: meView(user) }, 201);
+});
+route('PUT', '/api/clubs/:id', ({ user, body, params }) => {
+  need(user);
+  const c = store.get('clubs', params.id) || fail(404, 'Club not found');
+  if (c.ownerId !== user.id && !isStaff(user)) fail(403, 'Only the club owner can edit it');
+  Object.assign(c, validateClub(body, c));
+  store.save('clubs', c.id);
+  return json({ club: clubSummary(c) });
+});
+route('POST', '/api/clubs/:id/join', ({ user, params }) => {
+  need(user);
+  const c = store.get('clubs', params.id) || fail(404, 'Club not found');
+  if (c.members.includes(user.id)) fail(409, "You're already in this club");
+  if (!c.open) fail(403, 'This club is invite-only right now');
+  if (c.members.length >= MAX_CLUB) fail(409, 'This club is full');
+  if (user.clubId) leaveClub(user);
+  c.members.push(user.id);
+  user.clubId = c.id;
+  store.save('clubs', c.id); store.save('users', user.id);
+  broadcastClub(c.id, { t: 'sys', text: `${user.username} joined the club!` });
+  return json({ user: meView(user) });
+});
+route('POST', '/api/clubs/:id/leave', ({ user, params }) => {
+  need(user);
+  if (user.clubId !== params.id) fail(400, "You're not in this club");
+  leaveClub(user);
+  store.save('users', user.id);
+  broadcastClub(params.id, { t: 'sys', text: `${user.username} left the club` });
+  return json({ user: meView(user) });
+});
+route('POST', '/api/clubs/:id/kick', ({ user, body, params }) => {
+  need(user);
+  const c = store.get('clubs', params.id) || fail(404, 'Club not found');
+  if (c.ownerId !== user.id && !isStaff(user)) fail(403, 'Only the club owner can remove members');
+  const target = store.get('users', body.userId);
+  if (!target || !c.members.includes(target.id) || target.id === c.ownerId) fail(400, "Can't remove that member");
+  c.members = c.members.filter(id => id !== target.id);
+  target.clubId = null;
+  store.save('clubs', c.id); store.save('users', target.id);
+  return json({ ok: true });
+});
+route('DELETE', '/api/clubs/:id', ({ user, params }) => {
+  need(user);
+  const c = store.get('clubs', params.id) || fail(404, 'Club not found');
+  if (c.ownerId !== user.id && !isStaff(user)) fail(403, 'Only the club owner can delete it');
+  for (const id of c.members) { const u = store.get('users', id); if (u) { u.clubId = null; store.save('users', u.id); } }
+  store.del('clubs', c.id); store.del('clubchat', c.id);
+  broadcastClub(c.id, { t: 'sys', text: 'This club was deleted.' });
+  return json({ ok: true });
+});
+route('GET', '/api/clubs/:id/chat', ({ user, params }) => {
+  need(user);
+  const c = store.get('clubs', params.id) || fail(404, 'Club not found');
+  if (!c.members.includes(user.id) && !isStaff(user)) fail(403, 'Members only');
+  return json({ messages: store.get('clubchat', c.id)?.messages || [] });
+});
+route('POST', '/api/clubs/:id/chat', ({ user, body, params }) => {
+  need(user);
+  const c = store.get('clubs', params.id) || fail(404, 'Club not found');
+  if (!c.members.includes(user.id)) fail(403, 'Members only');
+  if (user.muted) fail(403, 'You are muted');
+  if (!rateLimit(`cchat:${user.id}`, 5, 8_000)) fail(429, "You're sending messages too fast");
+  const text = cleanText(body.text, 300);
+  if (!text) fail(400, 'Type a message');
+  const msg = { id: newId(8), userId: user.id, username: user.username, role: user.role, avatar: resolveBlook(user, user.avatar), text: filter().clean(text), ts: Date.now() };
+  store.put('clubchat', c.id, { messages: (store.get('clubchat', c.id)?.messages || []).concat(msg).slice(-100) });
+  broadcastClub(c.id, { t: 'msg', msg });
+  return json({ ok: true });
 });
 
 // Packs & blooks
@@ -297,6 +487,7 @@ route('POST', '/api/packs/open', ({ user, body, ip }) => {
   const isNew = !user.blooks[b.id];
   user.blooks[b.id] = (user.blooks[b.id] || 0) + 1;
   user.stats.packsOpened = (user.stats.packsOpened || 0) + 1;
+  questProgress(user, 'packs', 1);
   user.xp = (user.xp || 0) + 1;
   store.save('users', user.id);
   return json({ blook: b.id, rarity: b.rarity, isNew, tokens: user.tokens, user: meView(user) });
@@ -316,6 +507,7 @@ route('POST', '/api/blooks/sell', ({ user, body }) => {
   if (!user.blooks[b.id]) delete user.blooks[b.id];
   if (user.avatar === b.id && !user.blooks[b.id]) user.avatar = 'blip';
   user.tokens += value;
+  questProgress(user, 'sell', count);
   store.save('users', user.id);
   return json({ earned: value, user: meView(user) });
 });
@@ -349,6 +541,7 @@ route('POST', '/api/bazaar/:id/buy', ({ user, params }) => {
   seller.tokens += l.price;
   user.tokens -= l.price;
   user.blooks[l.blook] = (user.blooks[l.blook] || 0) + 1;
+  questProgress(user, 'bazaarBuy', 1);
   store.save('users', seller.id);
   store.save('users', user.id);
   return json({ user: meView(user) });
@@ -364,9 +557,10 @@ route('DELETE', '/api/bazaar/:id', ({ user, params }) => {
 // Leaderboard & profiles
 route('GET', '/api/leaderboard', () => {
   const users = store.filter('users', u => !u.banned);
-  const row = u => ({ username: u.username, avatar: resolveBlook(u, u.avatar), level: levelFromXp(u.xp), tokens: u.tokens, xp: u.xp || 0, unique: Object.keys(u.blooks || {}).length, wins: u.stats?.wins || 0, title: u.title || 'Newbie' });
+  const row = u => ({ username: u.username, avatar: resolveBlook(u, u.avatar), level: levelFromXp(u.xp), tokens: u.tokens, xp: u.xp || 0, unique: Object.keys(u.blooks || {}).length, wins: u.stats?.wins || 0, title: u.title || 'Newbie', club: clubBadge(u)?.tag || null });
   const top = key => [...users].sort((a, b) => (key(b) - key(a))).slice(0, 50).map(row);
-  return json({ tokens: top(u => u.tokens), xp: top(u => u.xp || 0), blooks: top(u => Object.keys(u.blooks || {}).length), wins: top(u => u.stats?.wins || 0) });
+  const clubs = store.all('clubs').map(clubSummary).sort((a, b) => b.xp - a.xp).slice(0, 50);
+  return json({ tokens: top(u => u.tokens), xp: top(u => u.xp || 0), blooks: top(u => Object.keys(u.blooks || {}).length), wins: top(u => u.stats?.wins || 0), clubs });
 });
 route('GET', '/api/users/:name', ({ params }) => {
   const u = store.find('users', x => x.usernameLower === params.name.toLowerCase());
@@ -382,6 +576,11 @@ route('GET', '/api/sets', ({ user, url }) => {
   if (scope === 'mine') { need(user); list = store.filter('sets', s => s.ownerId === user.id); }
   else if (scope === 'favorites') { need(user); list = (user.favorites || []).map(id => store.get('sets', id)).filter(s => s && (s.public || s.ownerId === user.id)); }
   else list = store.filter('sets', s => s.public);
+  const subject = url.searchParams.get('subject');
+  if (subject && SUBJECTS.includes(subject)) list = list.filter(s => (s.subject || 'Other') === subject);
+  const source = url.searchParams.get('source');
+  if (source === 'official') list = list.filter(s => s.ownerId === OFFICIAL_ID);
+  if (source === 'community') list = list.filter(s => s.ownerId !== OFFICIAL_ID);
   if (q) list = list.filter(s => s.title.toLowerCase().includes(q) || (s.description || '').toLowerCase().includes(q));
   list.sort((a, b) => scope === 'discover' ? (b.plays || 0) - (a.plays || 0) || b.updated - a.updated : b.updated - a.updated);
   return json({ sets: list.slice(0, 200).map(s => setSummary(s, user)) });
@@ -476,6 +675,8 @@ route('POST', '/api/solo/:sid/finish', ({ user, params }) => {
   user.xp = (user.xp || 0) + correct;
   user.stats.correct = (user.stats.correct || 0) + correct;
   user.stats.answered = (user.stats.answered || 0) + answered;
+  questProgress(user, 'solo', 1);
+  questProgress(user, 'correct', correct);
   store.save('users', user.id);
   if (s.homeworkId) {
     const hw = store.get('homework', s.homeworkId);
@@ -588,7 +789,7 @@ route('POST', '/api/chat', ({ user, body }) => {
   if (!rateLimit(`chat:${user.id}`, 5, 8_000)) fail(429, "You're sending messages too fast");
   const text = cleanText(body.text, 300);
   if (!text) fail(400, 'Type a message');
-  const msg = { id: newId(8), userId: user.id, username: user.username, role: user.role, avatar: resolveBlook(user, user.avatar), text: filter().clean(text), ts: Date.now() };
+  const msg = { id: newId(8), userId: user.id, username: user.username, role: user.role, avatar: resolveBlook(user, user.avatar), club: clubBadge(user)?.tag || null, text: filter().clean(text), ts: Date.now() };
   const log = chatLog().concat(msg).slice(-100);
   store.put('meta', 'chat', { messages: log });
   broadcastChat({ t: 'msg', msg });
@@ -614,7 +815,7 @@ route('POST', '/api/news', ({ user, body }) => {
 route('DELETE', '/api/news/:id', ({ user, params }) => { needStaff(user); store.del('news', params.id); return json({ ok: true }); });
 
 // Admin
-const adminUser = u => ({ id: u.id, username: u.username, role: u.role, tokens: u.tokens, level: levelFromXp(u.xp), banned: !!u.banned, muted: !!u.muted, created: u.created, unique: Object.keys(u.blooks || {}).length });
+const adminUser = u => ({ id: u.id, username: u.username, role: u.role, accountType: u.accountType || '?', request: u.teacherRequest?.status || null, tokens: u.tokens, level: levelFromXp(u.xp), banned: !!u.banned, muted: !!u.muted, created: u.created, unique: Object.keys(u.blooks || {}).length });
 route('GET', '/api/admin/users', ({ user, url }) => {
   needStaff(user);
   const q = (url.searchParams.get('q') || '').toLowerCase();
@@ -650,6 +851,23 @@ route('POST', '/api/admin/users/:id', async ({ user, body, params }) => {
   store.save('users', u.id);
   return json({ user: adminUser(u), tempPassword });
 });
+route('GET', '/api/admin/teacher-requests', ({ user }) => {
+  needAdmin(user);
+  const list = store.filter('users', u => u.teacherRequest?.status === 'pending').sort((a, b) => a.teacherRequest.at - b.teacherRequest.at)
+    .map(u => ({ id: u.id, username: u.username, school: u.teacherRequest.school, at: u.teacherRequest.at, created: u.created }));
+  return json({ requests: list });
+});
+route('POST', '/api/admin/teacher-requests/:id', ({ user, body, params }) => {
+  needAdmin(user);
+  const u = store.get('users', params.id) || fail(404, 'User not found');
+  if (u.teacherRequest?.status !== 'pending') fail(409, 'No pending request');
+  const approve = !!body.approve;
+  u.teacherRequest = { ...u.teacherRequest, status: approve ? 'approved' : 'rejected', decidedAt: Date.now(), decidedBy: user.username };
+  if (approve && u.role === 'student') u.role = 'teacher';
+  if (!approve) u.accountType = 'student';
+  store.save('users', u.id);
+  return json({ ok: true });
+});
 route('GET', '/api/admin/settings', ({ user }) => { needAdmin(user); return json({ settings: settings(), storage: storeInfo }); });
 route('POST', '/api/admin/settings', ({ user, body }) => {
   needAdmin(user);
@@ -670,8 +888,14 @@ route('POST', '/api/admin/settings', ({ user, body }) => {
 });
 
 // ---- Entry points ---------------------------------------------------------------------------------
-export async function handle(req, context) {
+let seeded = false;
+async function ready() {
   await initStore();
+  if (!seeded) { seeded = true; try { seedOfficialSets(store); } catch (e) { console.error('[seed]', e); } }
+}
+
+export async function handle(req, context) {
+  await ready();
   const url = new URL(req.url);
   const method = req.method.toUpperCase();
   const cookies = parseCookies(req.headers.get('cookie'));
@@ -699,7 +923,7 @@ export async function handle(req, context) {
 
 // conn: { send(string), close(), onmessage: fn(obj), onclose: fn() }
 export async function openSocket(conn, url, cookies) {
-  await initStore();
+  await ready();
   const user = sessionUser(cookies);
   const p = url.searchParams;
   if (p.get('chat')) {
@@ -707,6 +931,16 @@ export async function openSocket(conn, url, cookies) {
     chatConns.add(conn);
     conn.onmessage = () => {};
     conn.onclose = () => chatConns.delete(conn);
+    conn.send(JSON.stringify({ t: 'ready' }));
+    return;
+  }
+  if (p.get('club')) {
+    const c = store.get('clubs', p.get('club'));
+    if (!user || !c || !c.members.includes(user.id)) { conn.send(JSON.stringify({ t: 'error', msg: 'Members only', fatal: true })); return conn.close(); }
+    if (!clubConns.has(c.id)) clubConns.set(c.id, new Set());
+    clubConns.get(c.id).add(conn);
+    conn.onmessage = () => {};
+    conn.onclose = () => clubConns.get(c.id)?.delete(conn);
     conn.send(JSON.stringify({ t: 'ready' }));
     return;
   }

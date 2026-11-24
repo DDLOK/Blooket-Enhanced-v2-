@@ -130,21 +130,38 @@ for (const p of PACKS) for (const b of p.blooks) BLOOKS[b.id] = { ...b, pack: p.
 
 export const PACK_BY_ID = Object.fromEntries(PACKS.map(p => [p.id, p]));
 
+// Game modes. All but Showdown are self-paced: players answer at their own speed and the fun
+// happens between questions. `unit` is what the score is called; goals are in that unit.
 export const GAME_MODES = {
-  classic: {
-    name: 'Classic', color: '#0a99ff',
-    desc: 'Everyone answers the same question at the same time. Faster correct answers score more. You control the pace.',
-    selfPaced: false,
-  },
   goldrush: {
-    name: 'Gold Rush', color: '#ffb703',
-    desc: 'Answer questions to open treasure chests. Find gold, double it, or swipe it from other players!',
-    selfPaced: true, timed: true,
+    name: 'Gold Rush', color: '#ffb703', bg: 'linear-gradient(160deg,#ffc300,#fb8500)', unit: 'Gold', icon: 'gold',
+    desc: 'Answer questions to open treasure chests. Find gold, double it, or swipe it from your classmates!',
+    win: ['time', 'goal'], defaultGoal: 5000, tag: 'Most popular',
+  },
+  crypto: {
+    name: 'Crypto Heist', color: '#14b37d', bg: 'linear-gradient(160deg,#0b3d2e,#14b37d)', unit: 'Crypto', icon: 'crypto',
+    desc: 'Pick a secret password, mine crypto, then hack other players by guessing their passwords.',
+    win: ['time', 'goal'], defaultGoal: 10000, tag: 'New',
+  },
+  fishing: {
+    name: 'Fish Fest', color: '#0a99ff', bg: 'linear-gradient(180deg,#5ad1ff 0%,#0a99ff 45%,#0656a8 100%)', unit: 'lbs', icon: 'fish',
+    desc: 'Every correct answer casts your line. Reel in bigger fish as your lure levels up — heaviest haul wins!',
+    win: ['time', 'goal'], defaultGoal: 1000, tag: 'New',
+  },
+  factory: {
+    name: 'Blook Factory', color: '#7b2cbf', bg: 'linear-gradient(160deg,#3c096c,#9d4edd)', unit: 'Cash', icon: 'cash',
+    desc: 'Answer to hire blook workers that make cash every second. Build the richest factory!',
+    win: ['time', 'goal'], defaultGoal: 50000, tag: 'New',
   },
   race: {
-    name: 'Blook Race', color: '#4bc22e',
-    desc: 'Every correct answer moves your blook forward. First to the finish line wins!',
-    selfPaced: true,
+    name: 'Blook Race', color: '#4bc22e', bg: 'linear-gradient(160deg,#4bc22e,#2a9d8f)', unit: 'correct', icon: 'flag',
+    desc: 'Every correct answer moves your blook along the track. First to the finish line wins!',
+    win: ['goal'], defaultGoal: 15,
+  },
+  classic: {
+    name: 'Showdown', color: '#5b5bd6', bg: 'linear-gradient(160deg,#5b5bd6,#9a49aa)', unit: 'pts', icon: 'star',
+    desc: 'Host-paced: everyone answers the same question together and faster answers score more.',
+    win: ['questions'], hostPaced: true,
   },
 };
 
@@ -174,3 +191,30 @@ export const TITLES = [
   'Brainiac', 'Chest Champion', 'Night Owl', 'Homework Hero', 'Top of the Class', 'Blook Hunter', 'Lucky Duck',
   'Trivia Titan', 'Market Mogul', 'Chatterbox', 'Speedy Thinker', 'Certified Genius', 'Big Brain',
 ];
+
+// Daily spin wheel: each slice pays `m` x the daily reward. `w` is how likely it is.
+export const WHEEL = [
+  { m: 1, w: 22, color: '#0bc2cf' }, { m: 0.5, w: 14, color: '#9a49aa' }, { m: 1.5, w: 13, color: '#4bc22e' }, { m: 0.75, w: 16, color: '#ff7b00' },
+  { m: 2, w: 9, color: '#e63946' }, { m: 1, w: 14, color: '#3d8ee8' }, { m: 3, w: 4, color: '#ffcd05' }, { m: 1.25, w: 8, color: '#f15bb5' },
+];
+
+// ---- Appearance options (Settings → Appearance). All free. ----
+export const THEMES = {
+  grape:    { name: 'Grape (default)', main: '#9a49aa', dark: '#7c3a8a', light: '#b16cc0', bg1: '#4fc3f7', bg2: '#3d8ee8' },
+  ocean:    { name: 'Ocean',           main: '#1d6fd1', dark: '#1656a4', light: '#4b8fe0', bg1: '#48cae4', bg2: '#0077b6' },
+  forest:   { name: 'Forest',          main: '#2f8f46', dark: '#236c35', light: '#4fb064', bg1: '#95d5b2', bg2: '#40916c' },
+  sunset:   { name: 'Sunset',          main: '#e85d04', dark: '#b84a03', light: '#f48c06', bg1: '#ffba08', bg2: '#dc2f02' },
+  candy:    { name: 'Candy',           main: '#e5559a', dark: '#c03b7c', light: '#f07ab4', bg1: '#ffc6ff', bg2: '#bdb2ff' },
+  midnight: { name: 'Midnight (dark)', main: '#2b2d42', dark: '#1d1e2e', light: '#44475f', bg1: '#22223b', bg2: '#0b0c1a' },
+  mint:     { name: 'Mint',            main: '#0f9d8a', dark: '#0b7768', light: '#2ec4b0', bg1: '#c7f9cc', bg2: '#57cc99' },
+  royal:    { name: 'Royal',           main: '#5a189a', dark: '#3c096c', light: '#7b2cbf', bg1: '#ffd60a', bg2: '#ff9e00' },
+};
+export const BACKGROUNDS = { shapes: 'Shapes', dots: 'Dots', stars: 'Stars', stripes: 'Stripes', plain: 'Plain' };
+export const ANSWER_SCHEMES = {
+  classic: { name: 'Classic', colors: ['#ffa31e', '#0bc2cf', '#4bc22e', '#e44c8d'] },
+  pastel:  { name: 'Pastel',  colors: ['#f4a259', '#5bc0be', '#8ac926', '#f28482'] },
+  neon:    { name: 'Neon',    colors: ['#ff006e', '#3a86ff', '#06d6a0', '#ffbe0b'] },
+  cb:      { name: 'Colorblind friendly', colors: ['#0072b2', '#e69f00', '#009e73', '#cc79a7'] },
+  mono:    { name: 'Monochrome', colors: ['#5f2b6b', '#7c3a8a', '#9a49aa', '#b16cc0'] },
+};
+export const SUBJECTS = ['Math', 'Science', 'Geography', 'History', 'English', 'Languages', 'Technology', 'Arts', 'Health', 'Trivia', 'Other'];

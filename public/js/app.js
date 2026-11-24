@@ -2,7 +2,10 @@
 // Copyright (C) 2026 Blooket Enhanced v2 contributors. GPL-3.0-or-later.
 
 import { state, get, post, onMe, ApiError } from './api.js';
-import { html, raw, render, $, $$, blook, icon, coin, toast, fmt, bannerCss, ago, toStr } from './ui.js';
+import { html, raw, render, $, $$, blook, icon, coin, toast, fmt, bannerCss, ago, toStr, on } from './ui.js';
+import { WHEEL, GAME_MODES, THEMES, ANSWER_SCHEMES } from './data.js';
+import * as clubs from './pages/clubs.js';
+import { sfx } from './sfx.js';
 import * as sets from './pages/sets.js';
 import * as blooks from './pages/blooks.js';
 import * as social from './pages/social.js';
@@ -45,6 +48,8 @@ const ROUTES = [
   ['/u/:name', { layout: 'app', title: 'Profile', render: social.profile, auth: true }],
   ['/settings', { layout: 'app', title: 'Settings', render: social.settingsPage, auth: true }],
   ['/admin', { layout: 'app', title: 'Admin', render: social.admin, auth: true, staff: true }],
+  ['/clubs', { layout: 'app', title: 'Clubs', render: clubs.clubsPage, auth: true }],
+  ['/club/:id', { layout: 'app', title: 'Club', render: clubs.clubPage, auth: true }],
 ].map(([pattern, r]) => {
   const keys = [];
   const re = new RegExp('^' + pattern.replace(/:(\w+)/g, (_, k) => { keys.push(k); return '([^/]+)'; }) + '$');
@@ -58,7 +63,7 @@ const NAV = [
   ['/favorites', 'Favorites', 'star'], ['/history', 'History', 'history'], ['/homework', 'Homework', 'homework'],
   ['/play', 'Play', 'play'], 'sep',
   ['/blooks', 'Blooks', 'blooks'], ['/market', 'Market', 'market'], ['/bazaar', 'Bazaar', 'bazaar'],
-  ['/leaderboard', 'Leaderboard', 'trophy'], ['/chat', 'Chat', 'chat'], ['/news', 'News', 'news'], 'sep',
+  ['/clubs', 'Clubs', 'club'], ['/leaderboard', 'Leaderboard', 'trophy'], ['/chat', 'Chat', 'chat'], ['/news', 'News', 'news'], 'sep',
   ['/settings', 'Settings', 'gear'],
 ];
 
@@ -103,7 +108,23 @@ function bindShell() {
 }
 
 // Keep the token counter & avatar fresh whenever the user object changes.
+export function applyPrefs(p = {}) {
+  const t = THEMES[p.theme] || THEMES.grape;
+  const r = document.documentElement.style;
+  r.setProperty('--purple', t.main); r.setProperty('--purple-d', t.dark); r.setProperty('--purple-l', t.light);
+  r.setProperty('--bg1', t.bg1); r.setProperty('--bg2', t.bg2);
+  (ANSWER_SCHEMES[p.answers] || ANSWER_SCHEMES.classic).colors.forEach((c, i) => r.setProperty(`--a${i + 1}`, c));
+  const b = document.body.classList;
+  for (const c of [...b]) if (c.startsWith('bg-')) b.remove(c);
+  if (p.bg && p.bg !== 'shapes') b.add(`bg-${p.bg}`);
+  b.toggle('reduce-motion', !!p.reduceMotion);
+  b.toggle('big-text', !!p.bigText);
+  b.toggle('compact', !!p.compact);
+  document.querySelector('meta[name=theme-color]')?.setAttribute('content', t.main);
+}
+
 onMe(me => {
+  applyPrefs(me?.prefs);
   const pill = $('#tokenPill span');
   if (pill && me) pill.textContent = fmt(me.tokens);
   const up = $('#userPill');
@@ -126,7 +147,8 @@ async function route() {
 
   if (typeof cleanup === 'function') { try { cleanup(); } catch { /* */ } }
   cleanup = null;
-  document.body.className = '';
+  document.body.classList.remove('screen-correct', 'screen-wrong');
+  document.body.style.background = '';
   window.scrollTo(0, 0);
 
   let target;
@@ -142,6 +164,7 @@ async function route() {
     root.replaceChildren(target);
     document.title = state.settings.siteName;
   }
+  if (state.me && !state.me.accountType && match.layout === 'app') askAccountType();
   try {
     cleanup = await match.render(target, params, { go, setTitle });
   } catch (e) {
@@ -180,6 +203,10 @@ function authPage(kind) {
         <form id="authForm" style="margin-top:14px">
           <label class="field"><span>Username</span><input class="input" name="username" autocomplete="username" required maxlength="16"></label>
           <label class="field"><span>Password</span><input class="input" type="password" name="password" autocomplete="${reg ? 'new-password' : 'current-password'}" required></label>
+          ${reg ? html`<span style="font-size:14px;opacity:.85;display:block;margin-bottom:5px">I am a…</span><div class="role-pick">
+            <label class="role-card on" data-role="student"><input type="radio" name="accountType" value="student" checked hidden>${blook('sprout', 56)}<b>Student</b><span>Play games &amp; collect blooks</span></label>
+            <label class="role-card" data-role="teacher"><input type="radio" name="accountType" value="teacher" hidden>${blook('acorn-knight', 56)}<b>Teacher</b><span>Host games &amp; assign homework (needs admin approval)</span></label></div>
+            <label class="field" id="schoolField" hidden><span>School / class name (helps the admin approve you)</span><input class="input" name="school" maxlength="80"></label>` : ''}
           ${reg && s.needsCode ? html`<label class="field"><span>School code (ask your teacher)</span><input class="input" name="code" required></label>` : ''}
           ${reg && !s.signupsOpen ? html`<p class="error-text">Sign-ups are closed right now.</p>` : ''}
           <p class="error-text" id="err"></p>
@@ -187,12 +214,17 @@ function authPage(kind) {
         </form>
         <p class="center" style="margin-bottom:0">${reg ? html`Have an account? <a href="#/login" style="color:var(--purple)">Log in</a>` : html`New here? <a href="#/register" style="color:var(--purple)">Sign up free</a>`}</p>
       </div></div>`);
+    if (reg) on(el, '[data-role]', 'click', (e, c) => {
+      $$('[data-role]', el).forEach(x => x.classList.toggle('on', x === c));
+      $('input', c).checked = true;
+      $('#schoolField', el).hidden = c.dataset.role !== 'teacher';
+    });
     $('#authForm').onsubmit = async e => {
       e.preventDefault();
       const f = Object.fromEntries(new FormData(e.target));
       try {
         await post(`/api/auth/${kind}`, f);
-        toast(reg ? `Welcome, ${f.username}!` : 'Welcome back!', 'good');
+        toast(reg ? (f.accountType === 'teacher' ? 'Welcome! An admin will review your teacher request.' : `Welcome, ${f.username}!`) : 'Welcome back!', 'good');
         const next = sessionStorage.getItem('afterLogin');
         sessionStorage.removeItem('afterLogin');
         go(next || '/home');
@@ -209,7 +241,10 @@ async function home(el) {
   const cur = 40 * (lvl - 1) ** 2, nxt = 40 * lvl ** 2;
   const pct = Math.min(100, Math.round((me.xp - cur) / (nxt - cur) * 100));
   const st = me.stats || {};
-  render(el, html`<div class="grid" style="grid-template-columns:minmax(0,2fr) minmax(260px,1fr)">
+  const tr = me.teacherRequest;
+  render(el, html`${tr?.status === 'pending' ? html`<div class="notice">${blook('acorn-knight', 44)}<div><b>Your teacher request is waiting for an admin.</b><div style="font-size:14px">You can play normally in the meantime. Once approved you'll get the Teacher badge.</div></div></div>`
+    : tr?.status === 'rejected' && me.accountType !== 'teacher' ? html`<div class="notice">${blook('pebble', 44)}<div><b>Your teacher request wasn't approved.</b><div style="font-size:14px">Talk to your school's admin if you think this is a mistake.</div></div></div>` : ''}
+  <div class="grid" style="grid-template-columns:minmax(0,2fr) minmax(260px,1fr)">
     <div class="stack">
       <div class="profile-card">
         <div class="banner" style="background:${raw(bannerCss(me.banner))}">
@@ -234,21 +269,94 @@ async function home(el) {
           <a class="btn big purple" style="background:var(--purple-d)" href="#/market">${icon('market')} Open Packs</a>
         </div>
       </div>
+      <div class="panel">
+        <div class="panel-head"><h2>Game Modes</h2><span style="font-size:13px;opacity:.85">Host any set in any mode</span></div>
+        <div class="grid" style="grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:10px">
+          ${Object.values(GAME_MODES).map(g => html`<a href="#/discover" style="background:${raw(g.bg)};border-radius:12px;padding:12px;min-height:96px;box-shadow:inset 0 -6px rgba(0,0,0,.2)">
+            <div class="title-font" style="font-size:20px;text-shadow:0 2px rgba(0,0,0,.25)">${g.name}${g.tag ? html`<span class="mode-tag">${g.tag}</span>` : ''}</div>
+            <div style="font-size:12.5px;margin-top:4px;text-shadow:0 1px 2px rgba(0,0,0,.35)">${g.desc}</div></a>`)}
+        </div>
+      </div>
     </div>
     <div class="stack">
       <div class="panel center">
-        <h2 style="font-size:24px">Daily Reward</h2>
-        <div style="margin:8px 0">${coin(64)}</div>
-        <button class="btn yellow block" id="daily" ${me.canClaimDaily ? '' : 'disabled'}>${me.canClaimDaily ? `Claim ${state.settings.dailyReward || 500} Tokens` : 'Come back tomorrow!'}</button>
+        <h2 style="font-size:24px">Daily Spin</h2>
+        <div class="wheel-wrap"><div class="pointer"></div>${wheelSvg(state.settings.dailyReward || 500)}</div>
+        <button class="btn yellow block" id="daily" ${me.canClaimDaily ? '' : 'disabled'}>${me.canClaimDaily ? 'Spin!' : 'Come back tomorrow!'}</button>
       </div>
+      <div class="panel" id="quests">${questsHtml(me)}</div>
       <div class="panel">
         <div class="panel-head"><h2>News</h2><a href="#/news" class="btn small ghost">All</a></div>
         ${news.length ? news.slice(0, 3).map(n => html`<div style="background:rgba(255,255,255,.12);border-radius:8px;padding:10px;margin-bottom:8px"><b class="title-font">${n.title}</b><div style="font-size:12px;opacity:.75">${ago(n.date)} · ${n.author}</div><div style="font-weight:600;margin-top:4px;white-space:pre-wrap">${n.text.length > 220 ? n.text.slice(0, 220) + '…' : n.text}</div></div>`) : html`<p class="muted">No news yet.</p>`}
       </div>
     </div>
   </div>`);
-  $('#daily').onclick = async () => {
-    try { const r = await post('/api/me/daily'); toast(`+${r.amount} tokens!`, 'good'); home(el); } catch (e) { toast(e.message, 'bad'); }
+  $('#daily').onclick = async e => {
+    const btn = e.currentTarget;
+    btn.disabled = true;
+    try {
+      const r = await post('/api/me/daily');
+      const turn = 360 * 6 - (r.slice * (360 / WHEEL.length) + 180 / WHEEL.length);
+      const w = $('.wheel', el);
+      w.style.transform = `rotate(${turn}deg)`;
+      let ticks = 0; const t = setInterval(() => { sfx('tick'); if (++ticks > 22) clearInterval(t); }, 170);
+      setTimeout(() => { sfx('coin'); toast(`You won ${fmt(r.amount)} tokens!`, 'good'); btn.textContent = 'Come back tomorrow!'; }, 4300);
+    } catch (err) { toast(err.message, 'bad'); }
+  };
+  on(el, '[data-claim]', 'click', async (e, b) => {
+    try {
+      const r = await post(`/api/me/quests/${b.dataset.claim}/claim`);
+      sfx('coin'); toast(`+${r.amount} tokens!`, 'good');
+      render($('#quests', el), questsHtml(state.me));
+    } catch (err) { toast(err.message, 'bad'); }
+  });
+}
+
+function wheelSvg(base) {
+  const n = WHEEL.length, r = 100, c = 105;
+  const pt = (a, rr = r) => `${(c + rr * Math.sin(a)).toFixed(2)} ${(c - rr * Math.cos(a)).toFixed(2)}`;
+  let out = '';
+  WHEEL.forEach((s, i) => {
+    const a0 = (i / n) * 2 * Math.PI, a1 = ((i + 1) / n) * 2 * Math.PI, am = (a0 + a1) / 2;
+    out += `<path d="M${c} ${c} L${pt(a0)} A${r} ${r} 0 0 1 ${pt(a1)} Z" fill="${s.color}" stroke="#fff" stroke-width="2"/>`;
+    const [tx, ty] = pt(am, 66).split(' ');
+    out += `<text x="${tx}" y="${ty}" transform="rotate(${(am * 180 / Math.PI).toFixed(1)} ${tx} ${ty})" text-anchor="middle" dominant-baseline="middle" font-family="Titan One, sans-serif" font-size="17" fill="#fff" stroke="#0004" stroke-width="3" paint-order="stroke">${Math.round(base * s.m)}</text>`;
+  });
+  return raw(`<svg class="wheel" viewBox="0 0 210 210">${out}<circle cx="${c}" cy="${c}" r="18" fill="#fff" stroke="#9a49aa" stroke-width="4"/></svg>`);
+}
+
+function questsHtml(me) {
+  const qs = me.quests;
+  if (!qs) return '';
+  const all = qs.list.every(q => q.claimed);
+  return html`<div class="panel-head"><h2>Daily Quests</h2><span style="font-size:12px;opacity:.8">New quests every day</span></div>
+    ${qs.list.map(q => html`<div class="quest ${q.claimed ? 'done' : ''}"><div class="q"><div style="font-size:15px">${q.text}</div>
+      <div class="bar"><div style="width:${Math.round(q.progress / q.goal * 100)}%"></div></div><div style="font-size:12px;opacity:.85">${q.progress} / ${q.goal}</div></div>
+      ${q.claimed ? html`<span class="title-font">✓</span>` : q.progress >= q.goal ? html`<button class="btn small yellow" data-claim="${q.id}">${coin(16)} ${q.reward}</button>` : html`<span class="row" style="gap:4px;font-family:var(--title)">${coin(16)} ${q.reward}</span>`}</div>`)}
+    <div class="quest ${qs.bonusClaimed ? 'done' : ''}" style="background:rgba(255,205,5,.25)"><div class="q">Finish all 3 quests</div>
+      ${qs.bonusClaimed ? html`<span class="title-font">✓</span>` : all ? html`<button class="btn small yellow" data-claim="bonus">${coin(16)} ${me.questBonus}</button>` : html`<span class="row" style="gap:4px;font-family:var(--title)">${coin(16)} ${me.questBonus}</span>`}</div>`;
+}
+
+// ---- One-time "teacher or student?" prompt for accounts made before this existed ----
+let asked = false;
+async function askAccountType() {
+  if (asked) return;
+  asked = true;
+  const { modal } = await import('./ui.js');
+  const m = modal('Welcome! Are you a teacher or a student?', html`<div class="role-pick">
+      <div class="role-card" data-type="student">${blook('sprout', 64)}<b>Student</b><span>Play games &amp; collect blooks</span></div>
+      <div class="role-card" data-type="teacher">${blook('acorn-knight', 64)}<b>Teacher</b><span>Host games &amp; assign homework (an admin approves teachers)</span></div></div>
+    <label class="field" id="sch" hidden><span>School / class name</span><input class="input" id="school" maxlength="80"></label>
+    <button class="btn big block yellow" id="ok" disabled>Continue</button>`, { onClose: () => {} });
+  let type = null;
+  on(m.el, '[data-type]', 'click', (e, c) => { type = c.dataset.type; $$('[data-type]', m.el).forEach(x => x.classList.toggle('on', x === c)); $('#sch', m.el).hidden = type !== 'teacher'; $('#ok', m.el).disabled = false; });
+  $('#ok', m.el).onclick = async () => {
+    try {
+      await post('/api/me/account-type', { type, school: $('#school', m.el).value });
+      m.close();
+      toast(type === 'teacher' ? 'Request sent! An admin will review it.' : 'All set — have fun!', 'good');
+      route();
+    } catch (err) { toast(err.message, 'bad'); }
   };
 }
 
@@ -258,6 +366,7 @@ async function boot() {
     const [s, m] = await Promise.all([get('/api/settings'), get('/api/me')]);
     state.settings = s;
     state.me = m.user;
+    applyPrefs(m.user?.prefs);
   } catch (e) {
     render(root, html`<div class="empty" style="padding-top:20vh">${blook('pebble', 100)}<h2 style="color:#fff">Can't reach the server</h2><p>${e.message}</p><button class="btn" onclick="location.reload()">Try again</button></div>`);
     return;

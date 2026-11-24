@@ -3,7 +3,7 @@
 
 import { state, get, post, put, del } from '../api.js';
 import { html, raw, render, $, $$, blook, icon, toast, modal, confirmBox, fmt, ago, on } from '../ui.js';
-import { GAME_MODES, PACKS } from '../data.js';
+import { GAME_MODES, PACKS, SUBJECTS } from '../data.js';
 
 const COLORS = ['#0bc2cf', '#9a49aa', '#ffa31e', '#4bc22e', '#e44c8d', '#3d8ee8', '#ff5d5d', '#2a9d8f', '#6c4cff', '#f4a261'];
 const coverBlook = id => {
@@ -16,17 +16,24 @@ function setCards(list, emptyText) {
   if (!list.length) return html`<div class="empty">${blook('pebble', 90)}<p>${emptyText}</p></div>`;
   return html`<div class="set-grid">${list.map(s => html`<a class="set-card" href="#/set/${s.id}">
     <div class="cover" style="background:${s.color || '#0bc2cf'}">${blook(coverBlook(s.id), 80)}<span class="qcount">${s.questionCount} Questions</span></div>
-    <div class="body"><h3>${s.title}</h3><div class="meta"><span>${s.ownerName}</span><span>${fmt(s.plays)} plays</span>${s.favorite ? html`<span class="fav">★</span>` : ''}${!s.public ? html`<span>🔒 Private</span>` : ''}</div></div>
+    <div class="body"><h3>${s.title}</h3><div class="meta">${s.official ? html`<span class="official">OFFICIAL</span>` : ''}<span>${s.subject && s.subject !== 'Other' ? s.subject : s.ownerName}</span><span>${fmt(s.plays)} plays</span>${s.favorite ? html`<span class="fav">★</span>` : ''}${!s.public ? html`<span>🔒 Private</span>` : ''}</div></div>
   </a>`)}</div>`;
 }
 
 async function listPage(el, scope, empty, withSearch = false) {
-  render(el, html`${withSearch ? html`<form id="search" class="row" style="margin-bottom:16px"><input class="input" name="q" placeholder="Search sets..." style="max-width:420px"><button class="btn">Search</button><a class="btn yellow" href="#/create">${icon('plus')} Create</a></form>` : ''}<div id="list"><div class="spinner"></div></div>`);
-  const load = async (q = '') => {
-    const { sets } = await get(`/api/sets?scope=${scope}&q=${encodeURIComponent(q)}`);
+  let q = '', subject = '', source = '';
+  render(el, html`${withSearch ? html`<form id="search" class="row" style="margin-bottom:12px"><input class="input" name="q" placeholder="Search sets..." style="max-width:420px"><button class="btn">Search</button><a class="btn yellow" href="#/create">${icon('plus')} Create</a></form>
+    <div class="chips" id="src">${[['', 'All sets'], ['official', '⭐ Official'], ['community', 'Community']].map(([v, n]) => html`<button class="chip ${v === source ? 'on' : ''}" data-src="${v}">${n}</button>`)}</div>
+    <div class="chips" id="subj"><button class="chip on" data-subj="">All subjects</button>${SUBJECTS.map(x => html`<button class="chip" data-subj="${x}">${x}</button>`)}</div>` : ''}<div id="list"><div class="spinner"></div></div>`);
+  const load = async () => {
+    const { sets } = await get(`/api/sets?scope=${scope}&q=${encodeURIComponent(q)}&subject=${encodeURIComponent(subject)}&source=${source}`);
     render($('#list', el), setCards(sets, empty));
   };
-  if (withSearch) $('#search', el).onsubmit = e => { e.preventDefault(); load(new FormData(e.target).get('q')); };
+  if (withSearch) {
+    $('#search', el).onsubmit = e => { e.preventDefault(); q = new FormData(e.target).get('q'); load(); };
+    on(el, '[data-subj]', 'click', (e, b) => { subject = b.dataset.subj; $$('[data-subj]', el).forEach(x => x.classList.toggle('on', x === b)); load(); });
+    on(el, '[data-src]', 'click', (e, b) => { source = b.dataset.src; $$('[data-src]', el).forEach(x => x.classList.toggle('on', x === b)); load(); });
+  }
   await load();
 }
 export const discover = el => listPage(el, 'discover', 'No public sets yet — be the first to create one!', true);
@@ -45,7 +52,7 @@ export async function setPage(el, { id }, { go, setTitle }) {
         <div style="flex:1;min-width:200px">
           <h2 style="font-size:30px;color:var(--purple)">${set.title}</h2>
           <p style="margin:6px 0;font-weight:600">${set.description || 'No description.'}</p>
-          <div class="muted" style="font-size:14px">${set.questionCount} questions · by <a href="#/u/${set.ownerName}" style="color:var(--purple)">${set.ownerName}</a> · ${fmt(set.plays)} plays · ${set.public ? 'Public' : 'Private'}</div>
+          <div class="muted" style="font-size:14px">${set.official ? html`<span class="official">OFFICIAL</span> ` : ''}${set.subject} · ${set.questionCount} questions · by ${set.official ? set.ownerName : html`<a href="#/u/${set.ownerName}" style="color:var(--purple)">${set.ownerName}</a>`} · ${fmt(set.plays)} plays · ${set.public ? 'Public' : 'Private'}</div>
         </div>
       </div>
       ${set.questions ? html`<div class="panel"><div class="panel-head"><h2>Questions</h2></div>
@@ -77,27 +84,41 @@ export async function setPage(el, { id }, { go, setTitle }) {
 }
 
 function hostModal(set, go) {
-  let mode = 'classic';
+  let mode = 'goldrush', winType = 'time';
   const m = modal('Host a Game', html`
-    <p style="margin-top:0">Pick a game mode for <b>${set.title}</b>:</p>
-    <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px" id="modes">
-      ${Object.entries(GAME_MODES).map(([id, g]) => html`<button class="choice ${id === mode ? 'on' : ''}" data-mode="${id}" style="background:${g.color};color:#fff;text-align:left;padding:12px">
-        <div class="title-font" style="font-size:22px">${g.name}</div><div style="font-size:13px;font-weight:600;margin-top:4px">${g.desc}</div></button>`)}
+    <p style="margin-top:0">Pick a game mode for <b>${set.title}</b>. Players answer at their own pace — the fun happens between questions!</p>
+    <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:10px" id="modes">
+      ${Object.entries(GAME_MODES).map(([id, g]) => html`<button class="choice ${id === mode ? 'on' : ''}" data-mode="${id}" style="background:${raw(g.bg)};color:#fff;text-align:left;padding:12px;min-height:118px">
+        <div class="title-font" style="font-size:22px;text-shadow:0 2px rgba(0,0,0,.25)">${g.name}${g.tag ? html`<span class="mode-tag">${g.tag}</span>` : ''}</div>
+        <div style="font-size:13px;font-weight:700;margin-top:4px;text-shadow:0 1px 2px rgba(0,0,0,.3)">${g.desc}</div></button>`)}
     </div>
     <div id="opts" style="margin-top:14px"></div>
-    <label class="check" style="background:#f3e9f6;color:var(--ink);border-color:#e4d6e8"><input type="checkbox" id="shuffle" checked> Shuffle questions</label>
-    <label class="check" style="background:#f3e9f6;color:var(--ink);border-color:#e4d6e8"><input type="checkbox" id="late" checked> Allow late joining</label>
+    <div class="row">
+      <label class="check" style="background:#f3e9f6;color:var(--ink);border-color:#e4d6e8"><input type="checkbox" id="shuffle" checked> Shuffle questions</label>
+      <label class="check" style="background:#f3e9f6;color:var(--ink);border-color:#e4d6e8"><input type="checkbox" id="late" checked> Allow late joining</label>
+    </div>
     <button class="btn big block yellow" id="go" style="margin-top:14px">Host Now</button>`, { wide: true });
-  const opts = () => render($('#opts', m.el), mode === 'goldrush'
-    ? html`<label class="field"><span>Time limit (minutes)</span><input class="input" type="number" id="time" min="1" max="30" value="7"></label>`
-    : mode === 'race' ? html`<label class="field"><span>Correct answers to win</span><input class="input" type="number" id="goal" min="3" max="100" value="${Math.min(15, Math.max(5, set.questionCount))}"></label>` : '');
+  const opts = () => {
+    const g = GAME_MODES[mode];
+    if (!g.win.includes(winType)) winType = g.win[0];
+    render($('#opts', m.el), g.hostPaced ? html`<p class="muted" style="margin:0">Showdown runs through all ${set.questionCount} questions — you click Next between each one.</p>` : html`
+      <div class="row" style="align-items:flex-end">
+        ${g.win.length > 1 ? html`<div><span style="font-size:14px">Win condition</span><div class="row" style="margin-top:4px">
+          <button class="btn small ${winType === 'time' ? 'purple' : 'white'}" data-win="time" style="box-shadow:inset 0 -4px #0002">⏱ Time</button>
+          <button class="btn small ${winType === 'goal' ? 'purple' : 'white'}" data-win="goal" style="box-shadow:inset 0 -4px #0002">🏁 Goal</button></div></div>` : ''}
+        ${winType === 'time'
+          ? html`<label class="field" style="margin:0;width:180px"><span>Minutes</span><input class="input" type="number" id="time" min="1" max="60" value="7"></label>`
+          : html`<label class="field" style="margin:0;width:220px"><span>${mode === 'race' ? 'Correct answers to win' : `${g.unit} to win`}</span><input class="input" type="number" id="goal" min="3" value="${mode === 'race' ? Math.min(15, Math.max(5, set.questionCount)) : g.defaultGoal}"></label>`}
+      </div>`);
+  };
   opts();
   on(m.el, '[data-mode]', 'click', (e, b) => { mode = b.dataset.mode; $$('[data-mode]', m.el).forEach(x => x.classList.toggle('on', x === b)); opts(); });
+  on(m.el, '[data-win]', 'click', (e, b) => { winType = b.dataset.win; opts(); });
   $('#go', m.el).onclick = async () => {
     try {
       const r = await post('/api/games', {
         setId: set.id, mode,
-        settings: { timeLimitMin: $('#time', m.el)?.value, goal: $('#goal', m.el)?.value, shuffle: $('#shuffle', m.el).checked, lateJoin: $('#late', m.el).checked },
+        settings: { winType, timeLimitMin: $('#time', m.el)?.value, goal: $('#goal', m.el)?.value, shuffle: $('#shuffle', m.el).checked, lateJoin: $('#late', m.el).checked },
       });
       m.close(); go(`/host/${r.code}`);
     } catch (e) { toast(e.message, 'bad'); }
@@ -121,11 +142,11 @@ function assignModal(set, go) {
 
 // ---- Editor -----------------------------------------------------------------------------------
 export async function editor(el, { id }, { go }) {
-  let data = { title: '', description: '', public: true, color: COLORS[Math.floor(Math.random() * COLORS.length)], questions: [blankQ()] };
+  let data = { title: '', description: '', subject: 'Other', public: true, color: COLORS[Math.floor(Math.random() * COLORS.length)], questions: [blankQ()] };
   if (id) {
     const { set } = await get(`/api/sets/${id}`);
     if (!set.mine) throw new Error("You can't edit this set");
-    data = { title: set.title, description: set.description, public: set.public, color: set.color, questions: set.questions };
+    data = { title: set.title, description: set.description, subject: set.subject, public: set.public, color: set.color, questions: set.questions };
   }
   function blankQ() { return { q: '', answers: ['', '', '', ''], correct: [0], time: 20 }; }
   const draw = () => {
@@ -135,6 +156,7 @@ export async function editor(el, { id }, { go }) {
           <div>
             <label class="field"><span>Title</span><input class="input" id="title" maxlength="80" value="${data.title}" placeholder="e.g. Fractions Review"></label>
             <label class="field"><span>Description</span><textarea class="input" id="desc" maxlength="300" placeholder="What's this set about?">${data.description}</textarea></label>
+            <label class="field"><span>Subject</span><select class="input" id="subject">${SUBJECTS.map(x => html`<option ${data.subject === x ? 'selected' : ''}>${x}</option>`)}</select></label>
           </div>
           <div>
             <span style="font-size:14px">Cover color</span>
@@ -158,6 +180,7 @@ export async function editor(el, { id }, { go }) {
   const collect = () => {
     data.title = $('#title', el).value;
     data.description = $('#desc', el).value;
+    data.subject = $('#subject', el).value;
     data.public = $('#pub', el).checked;
     data.questions = $$('.q-editor', el).map(box => {
       const answers = [0, 1, 2, 3].map(j => $(`[data-a="${j}"]`, box).value);
